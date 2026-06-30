@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Macramé Weave Designer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="toolbar">
+      <div class="toolbar-left">
+        <span class="app-title">Macramé Weave Designer</span>
+        <div class="toolbar-group">
+          <button id="btn-new" title="New design">New</button>
+          <button id="btn-save" title="Save design">Save</button>
+          <button id="btn-duplicate" title="Duplicate design">Duplicate</button>
+          <button id="btn-load" title="Load design">Load</button>
+        </div>
+      </div>
+      <div class="toolbar-right">
+        <label>Columns (warp)
+          <input type="number" id="input-cols" min="2" max="40" value="12" />
+        </label>
+        <label>Rows (weft)
+          <input type="number" id="input-rows" min="2" max="60" value="20" />
+        </label>
+        <label>Cell size
+          <input type="range" id="input-cell-size" min="12" max="60" value="28" />
+        </label>
+        <label class="weave-toggle">Weave
+          <select id="select-weave">
+            <option value="plain">Plain (over/under)</option>
+            <option value="twill">Twill (2/2)</option>
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <div id="main">
+      <aside id="sidebar">
+        <section class="panel" id="palette-panel">
+          <h3>Palette <button id="btn-new-palette" class="small">+ New</button></h3>
+          <div id="palette-selector"></div>
+          <div id="palette-swatches"></div>
+          <div id="palette-editor" class="hidden">
+            <input type="text" id="palette-name-input" placeholder="Palette name" />
+            <div id="color-editor-list"></div>
+            <button id="btn-add-color" class="small">+ Add colour</button>
+            <div class="palette-actions">
+              <button id="btn-save-palette">Save palette</button>
+              <button id="btn-delete-palette" class="danger">Delete</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" id="rope-panel">
+          <h3 id="rope-panel-title">Rope segments</h3>
+          <p class="hint" id="rope-hint">Click a rope header to edit its colour segments.</p>
+          <div id="rope-segment-editor"></div>
+        </section>
+      </aside>
+
+      <div id="canvas-container">
+        <div id="canvas-scroll">
+          <svg id="weave-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="hidden">
+      <div id="modal-load" class="modal">
+        <h2>Load Design</h2>
+        <div id="project-list"></div>
+        <div class="modal-actions">
+          <button id="btn-modal-close">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
