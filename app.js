@@ -106,8 +106,10 @@ function loadProject(id) {
   state.activePaletteId = d.activePaletteId ?? state.activePaletteId;
   state.currentProjectName = entry.name;
   state.selectedRopes = [];
+  _history = []; _histIdx = -1;
   syncInputsFromState();
   renderAll();
+  pushHistory();
 }
 
 function deleteProject(id) {
@@ -243,6 +245,78 @@ let _rafPending = false;
 
 const AXIS_THRESHOLD = 8; // px of movement before axis locks
 
+// ── Undo / Redo ───────────────────────────────────────────────────────────────
+let _history = [];
+let _histIdx = -1;
+
+function pushHistory() {
+  _history = _history.slice(0, _histIdx + 1);
+  _history.push(JSON.parse(JSON.stringify(state.cellOverrides)));
+  if (_history.length > 50) _history.shift(); else _histIdx++;
+}
+
+function undo() {
+  if (_histIdx <= 0) return;
+  _histIdx--;
+  state.cellOverrides = JSON.parse(JSON.stringify(_history[_histIdx]));
+  scheduleRender();
+}
+
+function redo() {
+  if (_histIdx >= _history.length - 1) return;
+  _histIdx++;
+  state.cellOverrides = JSON.parse(JSON.stringify(_history[_histIdx]));
+  scheduleRender();
+}
+
+// ── Auto-save ─────────────────────────────────────────────────────────────────
+let _autosaveTimer = null;
+
+function scheduleAutosave() {
+  clearTimeout(_autosaveTimer);
+  _autosaveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem('mwd-autosave', JSON.stringify({
+        cols: state.cols, rows: state.rows, cellSize: state.cellSize,
+        framePad: state.framePad, weaveType: state.weaveType,
+        warpColors: state.warpColors, weftColors: state.weftColors,
+        cellOverrides: state.cellOverrides,
+        palettes: state.palettes, activePaletteId: state.activePaletteId,
+        currentProjectName: state.currentProjectName,
+      }));
+    } catch {}
+  }, 1500);
+}
+
+function tryRestoreAutosave() {
+  try {
+    const raw = localStorage.getItem('mwd-autosave');
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    state.cols            = d.cols            ?? state.cols;
+    state.rows            = d.rows            ?? state.rows;
+    state.cellSize        = d.cellSize        ?? state.cellSize;
+    state.framePad        = d.framePad        ?? state.framePad;
+    state.weaveType       = d.weaveType       ?? state.weaveType;
+    state.warpColors      = d.warpColors      ?? state.warpColors;
+    state.weftColors      = d.weftColors      ?? state.weftColors;
+    state.cellOverrides   = d.cellOverrides   ?? {};
+    state.palettes        = d.palettes        ?? state.palettes;
+    state.activePaletteId = d.activePaletteId ?? state.activePaletteId;
+    state.currentProjectName = d.currentProjectName ?? state.currentProjectName;
+    return true;
+  } catch { return false; }
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function exportPNG() {
+  const canvas = document.getElementById('weave-canvas');
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = (state.currentProjectName || 'weave').replace(/[^a-z0-9_\-]/gi, '_') + '.png';
+  a.click();
+}
+
 function scheduleRender() {
   if (!_rafPending) {
     _rafPending = true;
@@ -295,8 +369,8 @@ function renderWeave() {
   const cs = state.cellSize;
   const cols = state.cols;
   const rows = state.rows;
-  const W = HEADER + cols * cs;
-  const H = HEADER + rows * cs;
+  const W = HEADER + cols * cs + HEADER;
+  const H = HEADER + rows * cs + HEADER;
 
   canvas.width = W * dpr;
   canvas.height = H * dpr;
@@ -469,42 +543,92 @@ function renderWeave() {
     }
   }
 
-  // ── Corner ──
+  // ── Bottom warp headers (mirror of top) ──
+  const bottomY = HEADER + rows * cs;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (let c = 0; c < cols; c++) {
+    const x = HEADER + c * cs;
+    const color = wc[c][rows - 1];
+    const selected = isSelectedRope('warp', c);
+    ctx.fillStyle = color;
+    roundRect(ctx, x + 1, bottomY + 1, cs - 2, HEADER - 2, 3);
+    ctx.fill();
+    if (selected) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
+    if (cs >= 16) {
+      ctx.font = `600 ${Math.max(7, Math.floor(cs * 0.36))}px sans-serif`;
+      ctx.fillStyle = contrastColor(color);
+      ctx.fillText(String(c + 1), x + cs / 2, bottomY + 5);
+    }
+  }
+
+  // ── Right weft headers (mirror of left) ──
+  const rightX = HEADER + cols * cs;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let r = 0; r < rows; r++) {
+    const y = HEADER + r * cs;
+    const color = fc[r][cols - 1];
+    const selected = isSelectedRope('weft', r);
+    ctx.fillStyle = color;
+    roundRect(ctx, rightX + 1, y + 1, HEADER - 2, cs - 2, 3);
+    ctx.fill();
+    if (selected) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
+    if (cs >= 16) {
+      ctx.font = `600 ${Math.max(7, Math.floor(cs * 0.34))}px sans-serif`;
+      ctx.fillStyle = contrastColor(color);
+      ctx.fillText(String(r + 1), rightX + HEADER / 2, y + cs / 2);
+    }
+  }
+
+  // ── Corners (all four) ──
   ctx.fillStyle = themeBg;
   ctx.fillRect(0, 0, HEADER, HEADER);
+  ctx.fillRect(rightX, 0, HEADER, HEADER);
+  ctx.fillRect(0, bottomY, HEADER, HEADER);
+  ctx.fillRect(rightX, bottomY, HEADER, HEADER);
+
+  scheduleAutosave();
 }
 
 function setupCanvasEvents() {
   const canvas = document.getElementById('weave-canvas');
 
+  function getZone(px, py) {
+    const cs = state.cellSize;
+    const cols = state.cols, rows = state.rows;
+    const warpEnd = HEADER + cols * cs;
+    const weftEnd = HEADER + rows * cs;
+    const inWarpBand = px >= HEADER && px < warpEnd;
+    const inWeftBand = py >= HEADER && py < weftEnd;
+    if (inWarpBand && (py < HEADER || py >= weftEnd)) {
+      return { zone: 'warp-header', c: Math.floor((px - HEADER) / cs) };
+    }
+    if (inWeftBand && (px < HEADER || px >= warpEnd)) {
+      return { zone: 'weft-header', r: Math.floor((py - HEADER) / cs) };
+    }
+    if (inWarpBand && inWeftBand) {
+      return { zone: 'weave', c: Math.floor((px - HEADER) / cs), r: Math.floor((py - HEADER) / cs) };
+    }
+    return { zone: 'corner' };
+  }
+
   canvas.addEventListener('pointerdown', e => {
     const rect = canvas.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
-    const cs = state.cellSize;
+    const hit = getZone(e.clientX - rect.left, e.clientY - rect.top);
+    const additive = e.metaKey || e.ctrlKey || e.shiftKey;
 
-    // Warp header zone: y in [0, HEADER), x in [HEADER, ...]
-    if (py < HEADER && px >= HEADER) {
-      const c = Math.floor((px - HEADER) / cs);
-      if (c >= 0 && c < state.cols) {
-        selectRope('warp', c, e.metaKey || e.ctrlKey || e.shiftKey);
-      }
+    if (hit.zone === 'warp-header') {
+      if (hit.c >= 0 && hit.c < state.cols) selectRope('warp', hit.c, additive);
       return;
     }
-
-    // Weft header zone: x in [0, HEADER), y in [HEADER, ...]
-    if (px < HEADER && py >= HEADER) {
-      const r = Math.floor((py - HEADER) / cs);
-      if (r >= 0 && r < state.rows) {
-        selectRope('weft', r, e.metaKey || e.ctrlKey || e.shiftKey);
-      }
+    if (hit.zone === 'weft-header') {
+      if (hit.r >= 0 && hit.r < state.rows) selectRope('weft', hit.r, additive);
       return;
     }
+    if (hit.zone !== 'weave') return;
 
-    // Weave zone: start paint stroke
-    const c = Math.floor((px - HEADER) / cs);
-    const r = Math.floor((py - HEADER) / cs);
-    if (c < 0 || c >= state.cols || r < 0 || r >= state.rows) return;
+    const { c, r } = hit;
     const fp = state.framePad;
     if (c < fp || c >= state.cols - fp || r < fp || r >= state.rows - fp) return;
 
@@ -513,10 +637,8 @@ function setupCanvasEvents() {
     _painting = true;
     _axis = null;
     _painted.clear();
-    _startX = e.clientX;
-    _startY = e.clientY;
-    _startC = c;
-    _startR = r;
+    _startX = e.clientX; _startY = e.clientY;
+    _startC = c; _startR = r;
     toggleCellOverride(c, r);
     _sourceDepth = warpOnTop(c, r);
     _painted.add(`${c},${r}`);
@@ -538,22 +660,20 @@ function setupCanvasEvents() {
     doPaint(cell.c, cell.r);
   });
 
-  const stopPaint = () => { _painting = false; _painted.clear(); };
+  const stopPaint = () => {
+    if (_painting) pushHistory();
+    _painting = false;
+    _painted.clear();
+  };
   canvas.addEventListener('pointerup', stopPaint);
   window.addEventListener('pointerup', stopPaint);
 
-  // Update cursor based on zone
   canvas.addEventListener('mousemove', e => {
     const rect = canvas.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
-    if ((py < HEADER && px >= HEADER) || (px < HEADER && py >= HEADER)) {
-      canvas.style.cursor = 'pointer';
-    } else if (px >= HEADER && py >= HEADER) {
-      canvas.style.cursor = 'crosshair';
-    } else {
-      canvas.style.cursor = 'default';
-    }
+    const { zone } = getZone(e.clientX - rect.left, e.clientY - rect.top);
+    canvas.style.cursor =
+      zone === 'warp-header' || zone === 'weft-header' ? 'pointer' :
+      zone === 'weave' ? 'crosshair' : 'default';
   });
 }
 
@@ -860,6 +980,7 @@ function syncInputsFromState() {
   document.getElementById('input-cell-size').value = state.cellSize;
   document.getElementById('input-frame-pad').value = state.framePad;
   document.getElementById('select-weave').value = state.weaveType;
+  document.getElementById('project-name-input').value = state.currentProjectName;
 }
 
 // ── Full render ───────────────────────────────────────────────────────────────
@@ -879,19 +1000,49 @@ function applyTheme(dark) {
 }
 
 function init() {
-  // Restore saved theme (default: light)
   applyTheme(localStorage.getItem('mwd-theme') === 'dark');
 
-  initRopeColors();
-  syncInputsFromState();
-  renderAll();
+  if (tryRestoreAutosave()) {
+    syncInputsFromState();
+    renderAll();
+  } else {
+    initRopeColors();
+    syncInputsFromState();
+    renderAll();
+  }
+  pushHistory(); // baseline snapshot
+
+  setupCanvasEvents();
+
+  // ── Keyboard shortcuts ──
+  document.addEventListener('keydown', e => {
+    const cmd = e.metaKey || e.ctrlKey;
+    if (cmd && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+    if (cmd && (e.key === 'Z' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
+    if (cmd && e.key === 's') { e.preventDefault(); document.getElementById('btn-save').click(); return; }
+    if (e.key === 'Escape' && !cmd) {
+      if (state.selectedRopes.length) {
+        state.selectedRopes = [];
+        renderWeave();
+        renderRopeSegmentEditor();
+      }
+    }
+  });
 
   document.getElementById('btn-theme').addEventListener('click', () => {
     applyTheme(!document.documentElement.classList.contains('dark'));
     renderWeave();
   });
 
-  setupCanvasEvents();
+  document.getElementById('btn-undo').addEventListener('click', undo);
+  document.getElementById('btn-redo').addEventListener('click', redo);
+  document.getElementById('btn-export').addEventListener('click', exportPNG);
+
+  document.getElementById('project-name-input').addEventListener('change', e => {
+    state.currentProjectName = e.target.value.trim() || 'Untitled Design';
+    e.target.value = state.currentProjectName;
+    scheduleAutosave();
+  });
 
   document.getElementById('btn-select-all-warp').addEventListener('click', () => selectAllRopes('warp'));
   document.getElementById('btn-select-all-weft').addEventListener('click', () => selectAllRopes('weft'));
@@ -926,13 +1077,17 @@ function init() {
 
   document.getElementById('select-weave').addEventListener('change', e => {
     state.weaveType = e.target.value;
-    state.cellOverrides = {}; // reset depth overrides; colours are unaffected
+    state.cellOverrides = {};
+    pushHistory();
     renderWeave();
   });
 
   document.getElementById('btn-save').addEventListener('click', () => {
     const name = prompt('Save design as:', state.currentProjectName);
-    if (name) { saveProject(name); }
+    if (name) {
+      saveProject(name);
+      document.getElementById('project-name-input').value = state.currentProjectName;
+    }
   });
 
   document.getElementById('btn-load').addEventListener('click', openLoadModal);
@@ -940,16 +1095,19 @@ function init() {
   document.getElementById('btn-new').addEventListener('click', () => {
     if (!confirm('Start a new design? Unsaved changes will be lost.')) return;
     state.cols = 40; state.rows = 40; state.framePad = 2;
+    state.cellSize = 22;
     state.selectedRopes = [];
     state.currentProjectName = 'Untitled Design';
     initRopeColors();
+    _history = []; _histIdx = -1;
     syncInputsFromState();
     renderAll();
+    pushHistory();
   });
 
   document.getElementById('btn-duplicate').addEventListener('click', () => {
     const name = prompt('Duplicate design as:', state.currentProjectName + ' copy');
-    if (name) { saveProject(name); alert(`Saved as "${name}"`); }
+    if (name) { saveProject(name); document.getElementById('project-name-input').value = state.currentProjectName; }
   });
 
   document.getElementById('btn-modal-close').addEventListener('click', closeModal);
@@ -957,9 +1115,7 @@ function init() {
     if (e.target === document.getElementById('modal-overlay')) closeModal();
   });
 
-  document.getElementById('btn-new-palette').addEventListener('click', () => {
-    openPaletteEditor(null);
-  });
+  document.getElementById('btn-new-palette').addEventListener('click', () => openPaletteEditor(null));
 
   document.getElementById('btn-add-color').addEventListener('click', () => {
     if (!editingPalette) return;

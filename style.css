@@ -157,6 +157,29 @@ button.danger:hover {
   font-size: 14px;
 }
 
+/* Project name inline input */
+.project-name-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 3px 6px;
+  width: 160px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.project-name-input:hover { border-color: var(--border); }
+.project-name-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface2);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+  cursor: text;
+}
+
 /* ── Form controls ── */
 label {
   display: flex;
