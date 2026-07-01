@@ -30,18 +30,19 @@ const DEFAULT_PALETTES = [
 ];
 
 let state = {
-  cols: 12,
-  rows: 20,
-  cellSize: 28,
+  cols: 40,
+  rows: 40,
+  cellSize: 22,       // 28 * 0.8 ≈ 22
+  framePad: 2,        // cells of padding at each end of every rope
   weaveType: 'plain',
-  // warpColors[col] = array of { colorHex, endRow } segments (endRow = exclusive end)
   warpColors: [],
-  // weftColors[row] = array of { colorHex, endCol } segments
   weftColors: [],
+  // cellOverrides: sparse map "col,row" -> true (flip z-depth at this cell)
+  cellOverrides: {},
   palettes: JSON.parse(JSON.stringify(DEFAULT_PALETTES)),
   activePaletteId: 'natural',
   selectedColorHex: DEFAULT_PALETTES[0].colors[0].hex,
-  selectedRope: null, // { type: 'warp'|'weft', index: number }
+  selectedRope: null,
   currentProjectName: 'Untitled Design',
 };
 
@@ -60,9 +61,11 @@ function saveProject(name) {
       cols: state.cols,
       rows: state.rows,
       cellSize: state.cellSize,
+      framePad: state.framePad,
       weaveType: state.weaveType,
       warpColors: state.warpColors,
       weftColors: state.weftColors,
+      cellOverrides: state.cellOverrides,
       palettes: state.palettes,
       activePaletteId: state.activePaletteId,
     },
@@ -94,9 +97,11 @@ function loadProject(id) {
   state.cols = d.cols;
   state.rows = d.rows;
   state.cellSize = d.cellSize ?? state.cellSize;
+  state.framePad = d.framePad ?? 2;
   state.weaveType = d.weaveType ?? 'plain';
   state.warpColors = d.warpColors;
   state.weftColors = d.weftColors;
+  state.cellOverrides = d.cellOverrides ?? {};
   state.palettes = d.palettes ?? state.palettes;
   state.activePaletteId = d.activePaletteId ?? state.activePaletteId;
   state.currentProjectName = entry.name;
@@ -114,17 +119,16 @@ function deleteProject(id) {
 function initRopeColors() {
   const palette = activePalette();
   const c0 = palette.colors[0]?.hex ?? '#cccccc';
-
   state.warpColors = Array.from({ length: state.cols }, () => [
     { colorHex: c0, end: state.rows },
   ]);
   state.weftColors = Array.from({ length: state.rows }, () => [
     { colorHex: c0, end: state.cols },
   ]);
+  state.cellOverrides = {};
 }
 
 function ensureRopeLengths() {
-  // Grow or shrink warp arrays to match state.cols/rows
   while (state.warpColors.length < state.cols) {
     const c = activePalette().colors[0]?.hex ?? '#cccccc';
     state.warpColors.push([{ colorHex: c, end: state.rows }]);
@@ -137,27 +141,28 @@ function ensureRopeLengths() {
   }
   state.weftColors.length = state.rows;
 
-  // Update segment ends to new bounds
   state.warpColors.forEach(segs => {
     if (segs.length) segs[segs.length - 1].end = state.rows;
   });
   state.weftColors.forEach(segs => {
     if (segs.length) segs[segs.length - 1].end = state.cols;
   });
+
+  // Drop overrides that are now out of bounds
+  for (const key of Object.keys(state.cellOverrides)) {
+    const [c, r] = key.split(',').map(Number);
+    if (c >= state.cols || r >= state.rows) delete state.cellOverrides[key];
+  }
 }
 
-// Returns the colour hex for warp col at row r
 function warpColorAt(col, row) {
   const segs = state.warpColors[col] ?? [];
-  let pos = 0;
   for (const seg of segs) {
     if (row < seg.end) return seg.colorHex;
-    pos = seg.end;
   }
   return segs[segs.length - 1]?.colorHex ?? '#888';
 }
 
-// Returns the colour hex for weft row at col c
 function weftColorAt(row, col) {
   const segs = state.weftColors[row] ?? [];
   for (const seg of segs) {
@@ -166,21 +171,38 @@ function weftColorAt(row, col) {
   return segs[segs.length - 1]?.colorHex ?? '#888';
 }
 
-// Is the warp on top at cell (col, row)?
+// Is this cell in the frame-padding zone?
+function isPadCell(col, row) {
+  const p = state.framePad;
+  return col < p || col >= state.cols - p || row < p || row >= state.rows - p;
+}
+
+// Is warp on top at this cell? Respects per-cell overrides.
 function warpOnTop(col, row) {
+  let base;
   if (state.weaveType === 'plain') {
-    return (col + row) % 2 === 0;
+    base = (col + row) % 2 === 0;
+  } else if (state.weaveType === 'twill') {
+    base = ((col - row) % 4 + 4) % 4 < 2;
+  } else {
+    base = (col + row) % 2 === 0;
   }
-  if (state.weaveType === 'twill') {
-    return ((col - row) % 4 + 4) % 4 < 2;
+  return state.cellOverrides[`${col},${row}`] ? !base : base;
+}
+
+function toggleCellOverride(col, row) {
+  const key = `${col},${row}`;
+  if (state.cellOverrides[key]) {
+    delete state.cellOverrides[key];
+  } else {
+    state.cellOverrides[key] = true;
   }
-  return (col + row) % 2 === 0;
 }
 
 // ── SVG rendering ─────────────────────────────────────────────────────────────
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const HEADER = 28; // px for rope-label headers
+const HEADER = 24;
 
 function el(tag, attrs = {}, children = []) {
   const e = document.createElementNS(SVG_NS, tag);
@@ -203,13 +225,9 @@ function renderWeave() {
   svg.setAttribute('height', H);
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
 
-  // ── Background ──
   svg.appendChild(el('rect', { x: 0, y: 0, width: W, height: H, fill: '#111' }));
 
-  // ── Draw cells ──
-  // Each cell: show either warp (vertical) or weft (horizontal) rope on top,
-  // with a thin sliver of the under-rope visible at the edges.
-  const OVER_FRAC = 0.82; // fraction of cell covered by the top rope
+  const OVER_FRAC = 0.82;
   const UNDER_FRAC = (1 - OVER_FRAC) / 2;
   const ROUND = Math.max(2, cs * 0.12);
 
@@ -219,139 +237,157 @@ function renderWeave() {
       const y = HEADER + r * cs;
       const warpCol = warpColorAt(c, r);
       const weftCol = weftColorAt(r, c);
+
+      if (isPadCell(c, r)) {
+        // Frame padding: show the rope colour of the dominant direction as a flat band
+        const isLeftRight = c < state.framePad || c >= state.cols - state.framePad;
+        const isTopBottom = r < state.framePad || r >= state.rows - state.framePad;
+
+        if (isTopBottom && !isLeftRight) {
+          // Warp rope passes through, show as vertical band
+          svg.appendChild(el('rect', { x, y, width: cs, height: cs, fill: '#1a1a1a' }));
+          svg.appendChild(el('rect', {
+            x: x + cs * UNDER_FRAC, y,
+            width: cs * OVER_FRAC, height: cs,
+            rx: ROUND, ry: ROUND,
+            fill: warpCol,
+          }));
+        } else if (isLeftRight && !isTopBottom) {
+          // Weft rope passes through, show as horizontal band
+          svg.appendChild(el('rect', { x, y, width: cs, height: cs, fill: '#1a1a1a' }));
+          svg.appendChild(el('rect', {
+            x, y: y + cs * UNDER_FRAC,
+            width: cs, height: cs * OVER_FRAC,
+            rx: ROUND, ry: ROUND,
+            fill: weftCol,
+          }));
+        } else {
+          // Corner: just dark
+          svg.appendChild(el('rect', { x, y, width: cs, height: cs, fill: '#1a1a1a' }));
+        }
+
+        // Transparent click target for corner pad cells (no interaction needed)
+        continue;
+      }
+
+      // ── Woven cell ──
       const top = warpOnTop(c, r);
+      const isOverridden = !!state.cellOverrides[`${c},${r}`];
+
+      // Click target group
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.style.cursor = 'pointer';
 
       if (top) {
-        // Weft (horizontal) visible as thin bands top/bottom
-        svg.appendChild(el('rect', {
-          x, y, width: cs, height: cs * UNDER_FRAC,
-          fill: weftCol,
+        g.appendChild(el('rect', { x, y, width: cs, height: cs * UNDER_FRAC, fill: weftCol }));
+        g.appendChild(el('rect', { x, y: y + cs * (1 - UNDER_FRAC), width: cs, height: cs * UNDER_FRAC, fill: weftCol }));
+        g.appendChild(el('rect', {
+          x: x + cs * UNDER_FRAC, y: y - cs * 0.04,
+          width: cs * OVER_FRAC, height: cs * 1.08,
+          rx: ROUND, ry: ROUND, fill: warpCol,
         }));
-        svg.appendChild(el('rect', {
-          x, y: y + cs * (1 - UNDER_FRAC), width: cs, height: cs * UNDER_FRAC,
-          fill: weftCol,
-        }));
-        // Warp (vertical) on top
-        svg.appendChild(el('rect', {
-          x: x + cs * UNDER_FRAC,
-          y: y - cs * 0.04,
-          width: cs * OVER_FRAC,
-          height: cs * 1.08,
-          rx: ROUND, ry: ROUND,
-          fill: warpCol,
-        }));
-        // Subtle shadow on warp
-        svg.appendChild(el('rect', {
-          x: x + cs * UNDER_FRAC,
-          y: y - cs * 0.04,
-          width: cs * OVER_FRAC,
-          height: cs * 1.08,
-          rx: ROUND, ry: ROUND,
-          fill: 'rgba(0,0,0,0.18)',
+        g.appendChild(el('rect', {
+          x: x + cs * UNDER_FRAC, y: y - cs * 0.04,
+          width: cs * OVER_FRAC, height: cs * 1.08,
+          rx: ROUND, ry: ROUND, fill: 'rgba(0,0,0,0.18)',
           style: 'pointer-events:none',
         }));
-        // Highlight
-        svg.appendChild(el('rect', {
-          x: x + cs * UNDER_FRAC + 1,
-          y: y - cs * 0.04 + 1,
-          width: cs * OVER_FRAC * 0.35,
-          height: cs * 1.08 - 2,
-          rx: ROUND, ry: ROUND,
-          fill: 'rgba(255,255,255,0.12)',
+        g.appendChild(el('rect', {
+          x: x + cs * UNDER_FRAC + 1, y: y - cs * 0.04 + 1,
+          width: cs * OVER_FRAC * 0.35, height: cs * 1.08 - 2,
+          rx: ROUND, ry: ROUND, fill: 'rgba(255,255,255,0.12)',
           style: 'pointer-events:none',
         }));
       } else {
-        // Warp visible as thin side bands
-        svg.appendChild(el('rect', {
-          x, y, width: cs * UNDER_FRAC, height: cs,
-          fill: warpCol,
+        g.appendChild(el('rect', { x, y, width: cs * UNDER_FRAC, height: cs, fill: warpCol }));
+        g.appendChild(el('rect', { x: x + cs * (1 - UNDER_FRAC), y, width: cs * UNDER_FRAC, height: cs, fill: warpCol }));
+        g.appendChild(el('rect', {
+          x: x - cs * 0.04, y: y + cs * UNDER_FRAC,
+          width: cs * 1.08, height: cs * OVER_FRAC,
+          rx: ROUND, ry: ROUND, fill: weftCol,
         }));
-        svg.appendChild(el('rect', {
-          x: x + cs * (1 - UNDER_FRAC), y, width: cs * UNDER_FRAC, height: cs,
-          fill: warpCol,
-        }));
-        // Weft (horizontal) on top
-        svg.appendChild(el('rect', {
-          x: x - cs * 0.04,
-          y: y + cs * UNDER_FRAC,
-          width: cs * 1.08,
-          height: cs * OVER_FRAC,
-          rx: ROUND, ry: ROUND,
-          fill: weftCol,
-        }));
-        svg.appendChild(el('rect', {
-          x: x - cs * 0.04,
-          y: y + cs * UNDER_FRAC,
-          width: cs * 1.08,
-          height: cs * OVER_FRAC,
-          rx: ROUND, ry: ROUND,
-          fill: 'rgba(0,0,0,0.18)',
+        g.appendChild(el('rect', {
+          x: x - cs * 0.04, y: y + cs * UNDER_FRAC,
+          width: cs * 1.08, height: cs * OVER_FRAC,
+          rx: ROUND, ry: ROUND, fill: 'rgba(0,0,0,0.18)',
           style: 'pointer-events:none',
         }));
-        svg.appendChild(el('rect', {
-          x: x - cs * 0.04 + 1,
-          y: y + cs * UNDER_FRAC + 1,
-          width: cs * 1.08 - 2,
-          height: cs * OVER_FRAC * 0.35,
-          rx: ROUND, ry: ROUND,
-          fill: 'rgba(255,255,255,0.12)',
+        g.appendChild(el('rect', {
+          x: x - cs * 0.04 + 1, y: y + cs * UNDER_FRAC + 1,
+          width: cs * 1.08 - 2, height: cs * OVER_FRAC * 0.35,
+          rx: ROUND, ry: ROUND, fill: 'rgba(255,255,255,0.12)',
           style: 'pointer-events:none',
         }));
       }
+
+      // Override indicator: small dot in corner
+      if (isOverridden) {
+        g.appendChild(el('circle', {
+          cx: x + cs - 3, cy: y + 3, r: 2,
+          fill: 'rgba(255,255,255,0.6)',
+          style: 'pointer-events:none',
+        }));
+      }
+
+      g.addEventListener('click', () => {
+        toggleCellOverride(c, r);
+        renderWeave();
+      });
+
+      svg.appendChild(g);
     }
   }
 
-  // ── Warp headers (top row) ──
+  // ── Warp headers ──
   for (let c = 0; c < cols; c++) {
     const x = HEADER + c * cs;
     const topColor = warpColorAt(c, 0);
     const g = document.createElementNS(SVG_NS, 'g');
     g.setAttribute('class', 'rope-header' + (isSelectedRope('warp', c) ? ' selected' : ''));
-    g.dataset.type = 'warp';
-    g.dataset.index = c;
     g.appendChild(el('rect', {
       x: x + 1, y: 1, width: cs - 2, height: HEADER - 2,
-      rx: 4, fill: topColor, stroke: '#fff', 'stroke-width': isSelectedRope('warp', c) ? 2 : 0,
+      rx: 3, fill: topColor,
+      stroke: isSelectedRope('warp', c) ? '#fff' : 'none', 'stroke-width': 2,
     }));
-    g.appendChild(el('text', {
-      x: x + cs / 2, y: HEADER - 7,
-      'text-anchor': 'middle',
-      fill: contrastColor(topColor),
-      'font-size': Math.max(8, cs * 0.38),
-      'font-family': 'sans-serif',
-      'font-weight': '600',
-      style: 'pointer-events:none',
-    }, [document.createTextNode(c + 1)]));
+    if (cs >= 16) {
+      g.appendChild(el('text', {
+        x: x + cs / 2, y: HEADER - 5,
+        'text-anchor': 'middle',
+        fill: contrastColor(topColor),
+        'font-size': Math.max(7, cs * 0.36),
+        'font-family': 'sans-serif', 'font-weight': '600',
+        style: 'pointer-events:none',
+      }, [document.createTextNode(c + 1)]));
+    }
     g.addEventListener('click', () => selectRope('warp', c));
     svg.appendChild(g);
   }
 
-  // ── Weft headers (left column) ──
+  // ── Weft headers ──
   for (let r = 0; r < rows; r++) {
     const y = HEADER + r * cs;
     const leftColor = weftColorAt(r, 0);
     const g = document.createElementNS(SVG_NS, 'g');
     g.setAttribute('class', 'rope-header' + (isSelectedRope('weft', r) ? ' selected' : ''));
-    g.dataset.type = 'weft';
-    g.dataset.index = r;
     g.appendChild(el('rect', {
       x: 1, y: y + 1, width: HEADER - 2, height: cs - 2,
-      rx: 4, fill: leftColor, stroke: '#fff', 'stroke-width': isSelectedRope('weft', r) ? 2 : 0,
+      rx: 3, fill: leftColor,
+      stroke: isSelectedRope('weft', r) ? '#fff' : 'none', 'stroke-width': 2,
     }));
-    g.appendChild(el('text', {
-      x: HEADER / 2, y: y + cs / 2 + 4,
-      'text-anchor': 'middle',
-      fill: contrastColor(leftColor),
-      'font-size': Math.max(8, cs * 0.35),
-      'font-family': 'sans-serif',
-      'font-weight': '600',
-      style: 'pointer-events:none',
-    }, [document.createTextNode(r + 1)]));
+    if (cs >= 16) {
+      g.appendChild(el('text', {
+        x: HEADER / 2, y: y + cs / 2 + 4,
+        'text-anchor': 'middle',
+        fill: contrastColor(leftColor),
+        'font-size': Math.max(7, cs * 0.34),
+        'font-family': 'sans-serif', 'font-weight': '600',
+        style: 'pointer-events:none',
+      }, [document.createTextNode(r + 1)]));
+    }
     g.addEventListener('click', () => selectRope('weft', r));
     svg.appendChild(g);
   }
 
-  // Corner
   svg.appendChild(el('rect', { x: 0, y: 0, width: HEADER, height: HEADER, fill: '#111' }));
 }
 
@@ -373,7 +409,6 @@ function activePalette() {
 }
 
 function renderPalette() {
-  // Selector buttons
   const sel = document.getElementById('palette-selector');
   sel.innerHTML = '';
   state.palettes.forEach(p => {
@@ -388,7 +423,6 @@ function renderPalette() {
     sel.appendChild(btn);
   });
 
-  // Swatches
   const sw = document.getElementById('palette-swatches');
   sw.innerHTML = '';
   activePalette().colors.forEach(c => {
@@ -407,7 +441,6 @@ function renderPalette() {
 
 function applyColorToSelected() {
   if (!state.selectedRope) return;
-  // Apply to first segment for now; segment editor handles more granular control
   const { type, index } = state.selectedRope;
   if (type === 'warp') {
     state.warpColors[index][0].colorHex = state.selectedColorHex;
@@ -471,12 +504,11 @@ function renderRopeSegmentEditor() {
     });
     row.appendChild(strip);
 
-    // Split button (only if not last segment and has room)
     if (si === segs.length - 1 && maxEnd - prevEnd > 1) {
       const addBtn = document.createElement('button');
       addBtn.className = 'small add-seg-btn';
       addBtn.textContent = '+';
-      addBtn.title = 'Split here to add a colour change';
+      addBtn.title = 'Split to add a colour change';
       addBtn.addEventListener('click', () => {
         const midpoint = prevEnd + Math.ceil((seg.end - prevEnd) / 2);
         const newSeg = { colorHex: seg.colorHex, end: seg.end };
@@ -607,6 +639,7 @@ function syncInputsFromState() {
   document.getElementById('input-cols').value = state.cols;
   document.getElementById('input-rows').value = state.rows;
   document.getElementById('input-cell-size').value = state.cellSize;
+  document.getElementById('input-frame-pad').value = state.framePad;
   document.getElementById('select-weave').value = state.weaveType;
 }
 
@@ -625,9 +658,8 @@ function init() {
   syncInputsFromState();
   renderAll();
 
-  // Grid size
   document.getElementById('input-cols').addEventListener('change', e => {
-    state.cols = Math.max(2, Math.min(40, +e.target.value));
+    state.cols = Math.max(4, Math.min(80, +e.target.value));
     ensureRopeLengths();
     if (state.selectedRope?.type === 'warp' && state.selectedRope.index >= state.cols)
       state.selectedRope = null;
@@ -635,7 +667,7 @@ function init() {
   });
 
   document.getElementById('input-rows').addEventListener('change', e => {
-    state.rows = Math.max(2, Math.min(60, +e.target.value));
+    state.rows = Math.max(4, Math.min(80, +e.target.value));
     ensureRopeLengths();
     if (state.selectedRope?.type === 'weft' && state.selectedRope.index >= state.rows)
       state.selectedRope = null;
@@ -647,12 +679,16 @@ function init() {
     renderWeave();
   });
 
+  document.getElementById('input-frame-pad').addEventListener('change', e => {
+    state.framePad = Math.max(0, Math.min(8, +e.target.value));
+    renderWeave();
+  });
+
   document.getElementById('select-weave').addEventListener('change', e => {
     state.weaveType = e.target.value;
     renderWeave();
   });
 
-  // Save/load
   document.getElementById('btn-save').addEventListener('click', () => {
     const name = prompt('Save design as:', state.currentProjectName);
     if (name) { saveProject(name); }
@@ -662,7 +698,8 @@ function init() {
 
   document.getElementById('btn-new').addEventListener('click', () => {
     if (!confirm('Start a new design? Unsaved changes will be lost.')) return;
-    state.cols = 12; state.rows = 20; state.selectedRope = null;
+    state.cols = 40; state.rows = 40; state.framePad = 2;
+    state.selectedRope = null;
     state.currentProjectName = 'Untitled Design';
     initRopeColors();
     syncInputsFromState();
@@ -679,7 +716,6 @@ function init() {
     if (e.target === document.getElementById('modal-overlay')) closeModal();
   });
 
-  // Palette editor
   document.getElementById('btn-new-palette').addEventListener('click', () => {
     openPaletteEditor(null);
   });
