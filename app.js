@@ -395,8 +395,10 @@ function renderWeave() {
     }
   }
 
+  const themeBg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+
   // ── Background ──
-  ctx.fillStyle = '#1a1a1a';
+  ctx.fillStyle = themeBg;
   ctx.fillRect(0, 0, W, H);
 
   // ── Cell grid ──
@@ -407,7 +409,7 @@ function renderWeave() {
 
       if (isPadCell(c, r)) {
         if (isCornerPad(c, r)) {
-          ctx.fillStyle = '#1a1a1a';
+          ctx.fillStyle = themeBg;
           ctx.fillRect(x, y, cs, cs);
         } else {
           const pw = padIsWarp(c, r);
@@ -468,7 +470,7 @@ function renderWeave() {
   }
 
   // ── Corner ──
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = themeBg;
   ctx.fillRect(0, 0, HEADER, HEADER);
 }
 
@@ -886,6 +888,7 @@ function init() {
 
   document.getElementById('btn-theme').addEventListener('click', () => {
     applyTheme(!document.documentElement.classList.contains('dark'));
+    renderWeave();
   });
 
   setupCanvasEvents();
