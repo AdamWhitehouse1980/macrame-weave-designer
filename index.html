@@ -58,8 +58,14 @@
         </section>
 
         <section class="panel" id="rope-panel">
-          <h3 id="rope-panel-title">Rope segments</h3>
-          <p class="hint" id="rope-hint">Click a rope header to edit its colour segments.</p>
+          <div class="rope-panel-header">
+            <h3 id="rope-panel-title">Rope segments</h3>
+            <div class="select-all-btns">
+              <button id="btn-select-all-warp" class="small" title="Select all warp columns">All warp</button>
+              <button id="btn-select-all-weft" class="small" title="Select all weft rows">All weft</button>
+            </div>
+          </div>
+          <p class="hint" id="rope-hint">Click a header to select. ⌘/Ctrl+click to add to selection.</p>
           <div id="rope-segment-editor"></div>
         </section>
       </aside>

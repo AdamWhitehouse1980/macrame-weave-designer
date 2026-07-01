@@ -42,7 +42,7 @@ let state = {
   palettes: JSON.parse(JSON.stringify(DEFAULT_PALETTES)),
   activePaletteId: 'natural',
   selectedColorHex: DEFAULT_PALETTES[0].colors[0].hex,
-  selectedRope: null,
+  selectedRopes: [], // array of { type, index }
   currentProjectName: 'Untitled Design',
 };
 
@@ -105,7 +105,7 @@ function loadProject(id) {
   state.palettes = d.palettes ?? state.palettes;
   state.activePaletteId = d.activePaletteId ?? state.activePaletteId;
   state.currentProjectName = entry.name;
-  state.selectedRope = null;
+  state.selectedRopes = [];
   syncInputsFromState();
   renderAll();
 }
@@ -447,7 +447,7 @@ function renderWeave() {
         style: 'pointer-events:none',
       }, [document.createTextNode(c + 1)]));
     }
-    g.addEventListener('click', () => selectRope('warp', c));
+    g.addEventListener('click', e => selectRope('warp', c, e.metaKey || e.ctrlKey || e.shiftKey));
     svg.appendChild(g);
   }
 
@@ -472,7 +472,7 @@ function renderWeave() {
         style: 'pointer-events:none',
       }, [document.createTextNode(r + 1)]));
     }
-    g.addEventListener('click', () => selectRope('weft', r));
+    g.addEventListener('click', e => selectRope('weft', r, e.metaKey || e.ctrlKey || e.shiftKey));
     svg.appendChild(g);
   }
 
@@ -480,7 +480,32 @@ function renderWeave() {
 }
 
 function isSelectedRope(type, index) {
-  return state.selectedRope?.type === type && state.selectedRope?.index === index;
+  return state.selectedRopes.some(r => r.type === type && r.index === index);
+}
+
+function selectedRopeType() {
+  return state.selectedRopes[0]?.type ?? null;
+}
+
+function selectRope(type, index, additive = false) {
+  if (additive && (selectedRopeType() === type || state.selectedRopes.length === 0)) {
+    if (isSelectedRope(type, index)) {
+      state.selectedRopes = state.selectedRopes.filter(r => !(r.type === type && r.index === index));
+    } else {
+      state.selectedRopes = [...state.selectedRopes, { type, index }];
+    }
+  } else {
+    state.selectedRopes = [{ type, index }];
+  }
+  renderWeave();
+  renderRopeSegmentEditor();
+}
+
+function selectAllRopes(type) {
+  const count = type === 'warp' ? state.cols : state.rows;
+  state.selectedRopes = Array.from({ length: count }, (_, i) => ({ type, index: i }));
+  renderWeave();
+  renderRopeSegmentEditor();
 }
 
 function contrastColor(hex) {
@@ -528,24 +553,16 @@ function renderPalette() {
 }
 
 function applyColorToSelected() {
-  if (!state.selectedRope) return;
-  const { type, index } = state.selectedRope;
-  if (type === 'warp') {
-    state.warpColors[index][0].colorHex = state.selectedColorHex;
-  } else {
-    state.weftColors[index][0].colorHex = state.selectedColorHex;
-  }
+  if (!state.selectedRopes.length) return;
+  state.selectedRopes.forEach(({ type, index }) => {
+    const segs = type === 'warp' ? state.warpColors[index] : state.weftColors[index];
+    if (segs) segs[0].colorHex = state.selectedColorHex;
+  });
   renderWeave();
   renderRopeSegmentEditor();
 }
 
 // ── Rope segment editor ───────────────────────────────────────────────────────
-
-function selectRope(type, index) {
-  state.selectedRope = { type, index };
-  renderWeave();
-  renderRopeSegmentEditor();
-}
 
 function renderRopeSegmentEditor() {
   const panel = document.getElementById('rope-segment-editor');
@@ -553,19 +570,55 @@ function renderRopeSegmentEditor() {
   const title = document.getElementById('rope-panel-title');
   panel.innerHTML = '';
 
-  if (!state.selectedRope) {
+  const sel = state.selectedRopes;
+
+  if (!sel.length) {
     hint.classList.remove('hidden');
     title.textContent = 'Rope segments';
     return;
   }
 
   hint.classList.add('hidden');
-  const { type, index } = state.selectedRope;
+  const type = sel[0].type;
+  const palette = activePalette();
+
+  // ── Multi-select: simplified colour-apply panel ──
+  if (sel.length > 1) {
+    const typeLabel = type === 'warp' ? 'warp' : 'weft';
+    const indices = sel.map(r => r.index + 1).sort((a, b) => a - b);
+    title.textContent = `${sel.length} ${typeLabel} ropes`;
+
+    const info = document.createElement('div');
+    info.className = 'multi-select-panel';
+    info.innerHTML = `<strong>Click a colour to apply to all ${sel.length} selected ${typeLabel} ropes.</strong>`;
+
+    const strip = document.createElement('div');
+    strip.className = 'segment-strip';
+    palette.colors.forEach(c => {
+      const sw = document.createElement('div');
+      sw.className = 'seg-swatch';
+      sw.style.background = c.hex;
+      sw.title = c.name;
+      sw.addEventListener('click', () => {
+        sel.forEach(({ type: t, index: i }) => {
+          const segs = t === 'warp' ? state.warpColors[i] : state.weftColors[i];
+          if (segs) segs[0].colorHex = c.hex;
+        });
+        renderWeave();
+        renderRopeSegmentEditor();
+      });
+      strip.appendChild(sw);
+    });
+    info.appendChild(strip);
+    panel.appendChild(info);
+    return;
+  }
+
+  // ── Single-select: full segment editor ──
+  const { index } = sel[0];
   const segs = type === 'warp' ? state.warpColors[index] : state.weftColors[index];
   const maxEnd = type === 'warp' ? state.rows : state.cols;
   title.textContent = type === 'warp' ? `Warp ${index + 1} segments` : `Weft ${index + 1} segments`;
-
-  const palette = activePalette();
 
   segs.forEach((seg, si) => {
     const row = document.createElement('div');
@@ -767,19 +820,21 @@ function init() {
   svgEl.addEventListener('pointerup', stopPaint);
   window.addEventListener('pointerup', stopPaint);
 
+  document.getElementById('btn-select-all-warp').addEventListener('click', () => selectAllRopes('warp'));
+  document.getElementById('btn-select-all-weft').addEventListener('click', () => selectAllRopes('weft'));
+
   document.getElementById('input-cols').addEventListener('change', e => {
     state.cols = Math.max(4, Math.min(80, +e.target.value));
     ensureRopeLengths();
-    if (state.selectedRope?.type === 'warp' && state.selectedRope.index >= state.cols)
-      state.selectedRope = null;
+    state.selectedRopes = state.selectedRopes.filter(r => !(r.type === 'warp' && r.index >= state.cols));
     renderAll();
   });
 
   document.getElementById('input-rows').addEventListener('change', e => {
     state.rows = Math.max(4, Math.min(80, +e.target.value));
     ensureRopeLengths();
-    if (state.selectedRope?.type === 'weft' && state.selectedRope.index >= state.rows)
-      state.selectedRope = null;
+    if (state.selectedRopes.some(r => r.type === 'weft' && r.index >= state.rows))
+      state.selectedRopes = state.selectedRopes.filter(r => !(r.type === 'weft' && r.index >= state.rows));
     renderAll();
   });
 
@@ -808,7 +863,7 @@ function init() {
   document.getElementById('btn-new').addEventListener('click', () => {
     if (!confirm('Start a new design? Unsaved changes will be lost.')) return;
     state.cols = 40; state.rows = 40; state.framePad = 2;
-    state.selectedRope = null;
+    state.selectedRopes = [];
     state.currentProjectName = 'Untitled Design';
     initRopeColors();
     syncInputsFromState();
