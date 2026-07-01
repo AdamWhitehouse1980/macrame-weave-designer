@@ -184,6 +184,12 @@ function warpOnTop(col, row) {
     base = (col + row) % 2 === 0;
   } else if (state.weaveType === 'twill') {
     base = ((col - row) % 4 + 4) % 4 < 2;
+  } else if (state.weaveType === 'twill31') {
+    base = ((col - row) % 4 + 4) % 4 < 3;
+  } else if (state.weaveType === 'basket') {
+    base = (Math.floor(col / 2) + Math.floor(row / 2)) % 2 === 0;
+  } else if (state.weaveType === 'rib') {
+    base = row % 2 === 0;
   } else {
     base = (col + row) % 2 === 0;
   }
@@ -192,8 +198,11 @@ function warpOnTop(col, row) {
 
 // Base weave depth ignoring per-cell overrides — used by setDepth.
 function baseWarpOnTop(col, row) {
-  if (state.weaveType === 'plain') return (col + row) % 2 === 0;
-  if (state.weaveType === 'twill') return ((col - row) % 4 + 4) % 4 < 2;
+  if (state.weaveType === 'plain')   return (col + row) % 2 === 0;
+  if (state.weaveType === 'twill')   return ((col - row) % 4 + 4) % 4 < 2;
+  if (state.weaveType === 'twill31') return ((col - row) % 4 + 4) % 4 < 3;
+  if (state.weaveType === 'basket')  return (Math.floor(col / 2) + Math.floor(row / 2)) % 2 === 0;
+  if (state.weaveType === 'rib')     return row % 2 === 0;
   return (col + row) % 2 === 0;
 }
 
@@ -850,6 +859,7 @@ function init() {
 
   document.getElementById('select-weave').addEventListener('change', e => {
     state.weaveType = e.target.value;
+    state.cellOverrides = {}; // reset depth overrides; colours are unaffected
     renderWeave();
   });
 
