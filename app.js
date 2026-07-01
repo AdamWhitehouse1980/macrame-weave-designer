@@ -204,6 +204,48 @@ function toggleCellOverride(col, row) {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const HEADER = 24;
 
+// ── Paint state (click-and-drag depth toggling) ───────────────────────────────
+let _painting = false;
+let _paintTarget = null; // true = add override, false = remove override
+const _painted = new Set();
+let _rafPending = false;
+
+function scheduleRender() {
+  if (!_rafPending) {
+    _rafPending = true;
+    requestAnimationFrame(() => { _rafPending = false; renderWeave(); });
+  }
+}
+
+// Convert page pointer coordinates → { c, r } in the woven zone, or null.
+function cellFromPointer(clientX, clientY) {
+  const svgEl = document.getElementById('weave-svg');
+  if (!svgEl) return null;
+  const rect = svgEl.getBoundingClientRect();
+  const vb = svgEl.viewBox.baseVal;
+  if (!vb || rect.width === 0) return null;
+  const px = (clientX - rect.left) * (vb.width / rect.width);
+  const py = (clientY - rect.top) * (vb.height / rect.height);
+  const cs = state.cellSize;
+  const c = Math.floor((px - HEADER) / cs);
+  const r = Math.floor((py - HEADER) / cs);
+  if (c < 0 || c >= state.cols || r < 0 || r >= state.rows) return null;
+  const fp = state.framePad;
+  if (c < fp || c >= state.cols - fp || r < fp || r >= state.rows - fp) return null;
+  return { c, r };
+}
+
+function doPaint(c, r) {
+  const key = `${c},${r}`;
+  if (_painted.has(key)) return;
+  _painted.add(key);
+  const isOverridden = !!state.cellOverrides[key];
+  if (isOverridden !== _paintTarget) {
+    toggleCellOverride(c, r);
+    scheduleRender();
+  }
+}
+
 function el(tag, attrs = {}, children = []) {
   const e = document.createElementNS(SVG_NS, tag);
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
@@ -341,9 +383,15 @@ function renderWeave() {
       drawRopeCell(x, y, top, top ? wCol : fCol);
       addCrossingShadows(x, y, c, r, top, true);
 
-      // pointer-events:all ensures the transparent rect receives clicks even in strict SVG rendering
-      const hit = el('rect', { x, y, width: cs, height: cs, fill: 'transparent', style: 'cursor:pointer; pointer-events:all' });
-      hit.addEventListener('click', () => { toggleCellOverride(c, r); renderWeave(); });
+      const hit = el('rect', { x, y, width: cs, height: cs, fill: 'transparent', style: 'cursor:crosshair; pointer-events:all' });
+      hit.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        document.getElementById('weave-svg').setPointerCapture(e.pointerId);
+        _painting = true;
+        _painted.clear();
+        _paintTarget = !state.cellOverrides[`${c},${r}`];
+        doPaint(c, r);
+      });
       svg.appendChild(hit);
     }
   }
@@ -667,6 +715,17 @@ function init() {
   initRopeColors();
   syncInputsFromState();
   renderAll();
+
+  // One-time pointer listeners for paint dragging — survive SVG re-renders
+  const svgEl = document.getElementById('weave-svg');
+  svgEl.addEventListener('pointermove', e => {
+    if (!_painting) return;
+    const cell = cellFromPointer(e.clientX, e.clientY);
+    if (cell) doPaint(cell.c, cell.r);
+  });
+  const stopPaint = () => { _painting = false; _painted.clear(); };
+  svgEl.addEventListener('pointerup', stopPaint);
+  window.addEventListener('pointerup', stopPaint);
 
   document.getElementById('input-cols').addEventListener('change', e => {
     state.cols = Math.max(4, Math.min(80, +e.target.value));
