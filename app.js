@@ -870,10 +870,23 @@ function renderAll() {
 
 // ── Init & event wiring ───────────────────────────────────────────────────────
 
+function applyTheme(dark) {
+  document.documentElement.classList.toggle('dark', dark);
+  document.getElementById('btn-theme').textContent = dark ? '☽' : '☀︎';
+  localStorage.setItem('mwd-theme', dark ? 'dark' : 'light');
+}
+
 function init() {
+  // Restore saved theme (default: light)
+  applyTheme(localStorage.getItem('mwd-theme') === 'dark');
+
   initRopeColors();
   syncInputsFromState();
   renderAll();
+
+  document.getElementById('btn-theme').addEventListener('click', () => {
+    applyTheme(!document.documentElement.classList.contains('dark'));
+  });
 
   setupCanvasEvents();
 

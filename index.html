@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Macramé Weave Designer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -11,6 +13,7 @@
     <header id="toolbar">
       <div class="toolbar-left">
         <span class="app-title">Macramé Weave Designer</span>
+        <div class="toolbar-divider"></div>
         <div class="toolbar-group">
           <button id="btn-new" title="New design">New</button>
           <button id="btn-save" title="Save design">Save</button>
@@ -19,27 +22,29 @@
         </div>
       </div>
       <div class="toolbar-right">
-        <label>Columns (warp)
-          <input type="number" id="input-cols" min="2" max="40" value="12" />
+        <label>Columns
+          <input type="number" id="input-cols" min="2" max="80" value="12" />
         </label>
-        <label>Rows (weft)
-          <input type="number" id="input-rows" min="2" max="60" value="20" />
+        <label>Rows
+          <input type="number" id="input-rows" min="2" max="80" value="20" />
         </label>
-        <label>Cell size
+        <label>Size
           <input type="range" id="input-cell-size" min="12" max="60" value="28" />
         </label>
-        <label>Frame pad
+        <label>Pad
           <input type="number" id="input-frame-pad" min="0" max="8" value="2" />
         </label>
-        <label class="weave-toggle">Weave
+        <label>Weave
           <select id="select-weave">
-            <option value="plain">Plain (over/under)</option>
-            <option value="twill">Twill (2/2)</option>
-            <option value="twill31">Twill (3/1)</option>
-            <option value="basket">Basket (2×2)</option>
+            <option value="plain">Plain</option>
+            <option value="twill">Twill 2/2</option>
+            <option value="twill31">Twill 3/1</option>
+            <option value="basket">Basket 2×2</option>
             <option value="rib">Rib</option>
           </select>
         </label>
+        <div class="toolbar-divider"></div>
+        <button id="btn-theme" title="Toggle light / dark mode">☀︎</button>
       </div>
     </header>
 
@@ -62,7 +67,7 @@
 
         <section class="panel" id="rope-panel">
           <div class="rope-panel-header">
-            <h3 id="rope-panel-title">Rope segments</h3>
+            <h3 id="rope-panel-title" style="margin-bottom:0">Rope segments</h3>
             <div class="select-all-btns">
               <button id="btn-select-all-warp" class="small" title="Select all warp columns">All warp</button>
               <button id="btn-select-all-weft" class="small" title="Select all weft rows">All weft</button>
@@ -75,7 +80,9 @@
 
       <div id="canvas-container">
         <div id="canvas-scroll">
-          <canvas id="weave-canvas"></canvas>
+          <div id="canvas-inner">
+            <canvas id="weave-canvas"></canvas>
+          </div>
         </div>
       </div>
     </div>
