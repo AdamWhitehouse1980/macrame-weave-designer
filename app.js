@@ -275,39 +275,47 @@ function renderWeave() {
     return (c < fp || c >= cols - fp) && (r < fp || r >= rows - fp);
   }
 
+  // Natural rope type of a pad cell: top/bottom rows extend warp, left/right columns extend weft.
+  function padIsWarp(c, r) {
+    return r < fp || r >= rows - fp;
+  }
+
   // True if neighbour (nc,nr) is the OPPOSITE rope type from currentIsWarp.
-  // Non-corner pad cells always count as "other type" — they are a frame boundary crossing.
+  // Uses natural type for pad cells so warp-pad↔warp-woven is treated as same type (no shadow).
   function isOtherType(nc, nr, currentIsWarp) {
     if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) return false;
-    if (isPadCell(nc, nr)) return !isCornerPad(nc, nr);
+    if (isCornerPad(nc, nr)) return false;
+    if (isPadCell(nc, nr)) return padIsWarp(nc, nr) !== currentIsWarp;
     return warpOnTop(nc, nr) !== currentIsWarp;
   }
 
   const sw = cs * SF;
-  const pnSoft = pn + '; opacity:0.55'; // softer shadow for secondary (over-rope) direction
+  const pnSoft = pn + '; opacity:0.55';
 
   // Crossing shadows in two tiers:
-  //   PRIMARY (full strength) — on the UNDER-ROPE in the direction of the rope's travel.
-  //     Weft cells:  left/right where warp exists.
-  //     Warp cells:  top/bottom where weft exists.
-  //   SECONDARY (55% opacity) — on the OVER-ROPE in the perpendicular direction.
-  //     Shows the under-rope column/row passing through, matches Asset 2 extra gradient strips.
-  //     Keeps the directional rope gradient dominant while adding consistent crossing depth.
-  function addCrossingShadows(x, y, c, r, top) {
+  //   PRIMARY (full strength, conditional) — at run boundaries in the rope's travel direction.
+  //   SECONDARY (55% opacity, unconditional for woven cells) — perpendicular direction.
+  //     Always applied regardless of neighbour type, so every cell in a multi-cell run
+  //     gets identical shading (no alternating light/dark within a forced band).
+  function addCrossingShadows(x, y, c, r, top, isWoven) {
     if (!top) {
-      // weft on top — primary: left/right from same-row warp
-      if (isOtherType(c-1, r, top)) svg.appendChild(el('rect', { x,         y, width: sw, height: cs, fill: 'url(#gXL)', style: pn }));
-      if (isOtherType(c+1, r, top)) svg.appendChild(el('rect', { x: x+cs-sw, y, width: sw, height: cs, fill: 'url(#gXR)', style: pn }));
-      // secondary: top/bottom from column-direction warp (shows warp column passing under)
-      if (isOtherType(c, r-1, top)) svg.appendChild(el('rect', { x, y,         width: cs, height: sw, fill: 'url(#gXT)', style: pnSoft }));
-      if (isOtherType(c, r+1, top)) svg.appendChild(el('rect', { x, y: y+cs-sw, width: cs, height: sw, fill: 'url(#gXB)', style: pnSoft }));
+      // weft on top — primary left/right at run entry/exit only
+      if (isOtherType(c-1, r, false)) svg.appendChild(el('rect', { x,         y, width: sw, height: cs, fill: 'url(#gXL)', style: pn }));
+      if (isOtherType(c+1, r, false)) svg.appendChild(el('rect', { x: x+cs-sw, y, width: sw, height: cs, fill: 'url(#gXR)', style: pn }));
+      // secondary top/bottom: always for woven cells (warp column always passes under)
+      if (isWoven) {
+        svg.appendChild(el('rect', { x, y,         width: cs, height: sw, fill: 'url(#gXT)', style: pnSoft }));
+        svg.appendChild(el('rect', { x, y: y+cs-sw, width: cs, height: sw, fill: 'url(#gXB)', style: pnSoft }));
+      }
     } else {
-      // warp on top — primary: top/bottom from same-column weft
-      if (isOtherType(c, r-1, top)) svg.appendChild(el('rect', { x, y,         width: cs, height: sw, fill: 'url(#gXT)', style: pn }));
-      if (isOtherType(c, r+1, top)) svg.appendChild(el('rect', { x, y: y+cs-sw, width: cs, height: sw, fill: 'url(#gXB)', style: pn }));
-      // secondary: left/right from row-direction weft (shows weft row passing under)
-      if (isOtherType(c-1, r, top)) svg.appendChild(el('rect', { x,         y, width: sw, height: cs, fill: 'url(#gXL)', style: pnSoft }));
-      if (isOtherType(c+1, r, top)) svg.appendChild(el('rect', { x: x+cs-sw, y, width: sw, height: cs, fill: 'url(#gXR)', style: pnSoft }));
+      // warp on top — primary top/bottom at run entry/exit only
+      if (isOtherType(c, r-1, true)) svg.appendChild(el('rect', { x, y,         width: cs, height: sw, fill: 'url(#gXT)', style: pn }));
+      if (isOtherType(c, r+1, true)) svg.appendChild(el('rect', { x, y: y+cs-sw, width: cs, height: sw, fill: 'url(#gXB)', style: pn }));
+      // secondary left/right: always for woven cells (weft row always passes under)
+      if (isWoven) {
+        svg.appendChild(el('rect', { x,         y, width: sw, height: cs, fill: 'url(#gXL)', style: pnSoft }));
+        svg.appendChild(el('rect', { x: x+cs-sw, y, width: sw, height: cs, fill: 'url(#gXR)', style: pnSoft }));
+      }
     }
   }
 
@@ -319,21 +327,19 @@ function renderWeave() {
       const fCol = weftColorAt(r, c);
 
       if (isPadCell(c, r)) {
-        const isTopBot = r < fp || r >= rows - fp;
-        const isLeftRight = c < fp || c >= cols - fp;
         if (isCornerPad(c, r)) {
           svg.appendChild(el('rect', { x, y, width: cs, height: cs, fill: '#1a1a1a' }));
-        } else if (isTopBot) {
-          drawRopeCell(x, y, true, wCol);
         } else {
-          drawRopeCell(x, y, false, fCol);
+          const pw = padIsWarp(c, r);
+          drawRopeCell(x, y, pw, pw ? wCol : fCol);
+          addCrossingShadows(x, y, c, r, pw, false); // pad cells: primary boundary shadows only
         }
         continue;
       }
 
       const top = warpOnTop(c, r);
       drawRopeCell(x, y, top, top ? wCol : fCol);
-      addCrossingShadows(x, y, c, r, top);
+      addCrossingShadows(x, y, c, r, top, true);
 
       // pointer-events:all ensures the transparent rect receives clicks even in strict SVG rendering
       const hit = el('rect', { x, y, width: cs, height: cs, fill: 'transparent', style: 'cursor:pointer; pointer-events:all' });
