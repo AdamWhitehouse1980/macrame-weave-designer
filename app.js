@@ -44,6 +44,8 @@ let state = {
   selectedRopes: [],
   currentProjectName: 'Untitled Design',
   gridDivisions: 0,
+  mirrorH: false,
+  mirrorV: false,
 };
 
 // ── Persistence ───────────────────────────────────────────────────────────────
@@ -284,6 +286,7 @@ function scheduleAutosave() {
         palettes: state.palettes, activePaletteId: state.activePaletteId,
         currentProjectName: state.currentProjectName,
         gridDivisions: state.gridDivisions,
+        mirrorH: state.mirrorH, mirrorV: state.mirrorV,
       }));
     } catch {}
   }, 1500);
@@ -306,6 +309,8 @@ function tryRestoreAutosave() {
     state.activePaletteId = d.activePaletteId ?? state.activePaletteId;
     state.currentProjectName = d.currentProjectName ?? state.currentProjectName;
     state.gridDivisions     = d.gridDivisions     ?? 0;
+    state.mirrorH           = d.mirrorH           ?? false;
+    state.mirrorV           = d.mirrorV           ?? false;
     return true;
   } catch { return false; }
 }
@@ -343,12 +348,29 @@ function cellFromPointer(clientX, clientY) {
   return { c, r };
 }
 
-// Paint cell (c,r) to match the source depth. Skips cells already painted.
+// Returns the mirror counterparts of (c,r) that are currently enabled and in-bounds.
+function getMirrorCells(c, r) {
+  const mc = state.cols - 1 - c;
+  const mr = state.rows - 1 - r;
+  const out = [];
+  if (state.mirrorH && mc !== c && !isPadCell(mc, r))   out.push([mc, r]);
+  if (state.mirrorV && mr !== r && !isPadCell(c, mr))   out.push([c, mr]);
+  if (state.mirrorH && state.mirrorV && mc !== c && mr !== r && !isPadCell(mc, mr)) out.push([mc, mr]);
+  return out;
+}
+
+// Paint cell (c,r) to match the source depth, plus any enabled mirrors.
 function doPaint(c, r) {
   const key = `${c},${r}`;
   if (_painted.has(key)) return;
   _painted.add(key);
   if (setDepth(c, r, _sourceDepth)) scheduleRender();
+  for (const [mc, mr] of getMirrorCells(c, r)) {
+    const mk = `${mc},${mr}`;
+    if (_painted.has(mk)) continue;
+    _painted.add(mk);
+    if (setDepth(mc, mr, _sourceDepth)) scheduleRender();
+  }
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -665,6 +687,10 @@ function setupCanvasEvents() {
     toggleCellOverride(c, r);
     _sourceDepth = warpOnTop(c, r);
     _painted.add(`${c},${r}`);
+    for (const [mc, mr] of getMirrorCells(c, r)) {
+      _painted.add(`${mc},${mr}`);
+      setDepth(mc, mr, _sourceDepth);
+    }
     scheduleRender();
   });
 
@@ -1061,6 +1087,19 @@ function init() {
   document.getElementById('select-grid-overlay').addEventListener('change', e => {
     state.gridDivisions = +e.target.value;
     renderWeave();
+  });
+
+  function syncMirrorButtons() {
+    document.getElementById('btn-mirror-h').classList.toggle('active', state.mirrorH);
+    document.getElementById('btn-mirror-v').classList.toggle('active', state.mirrorV);
+  }
+  syncMirrorButtons();
+
+  document.getElementById('btn-mirror-h').addEventListener('click', () => {
+    state.mirrorH = !state.mirrorH; syncMirrorButtons(); scheduleAutosave();
+  });
+  document.getElementById('btn-mirror-v').addEventListener('click', () => {
+    state.mirrorV = !state.mirrorV; syncMirrorButtons(); scheduleAutosave();
   });
 
   document.getElementById('btn-undo').addEventListener('click', undo);
