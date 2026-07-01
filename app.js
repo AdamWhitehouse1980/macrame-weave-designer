@@ -1102,6 +1102,30 @@ function init() {
     state.mirrorV = !state.mirrorV; syncMirrorButtons(); scheduleAutosave();
   });
 
+  document.getElementById('btn-symmetrize').addEventListener('click', () => {
+    if (!state.mirrorH && !state.mirrorV) return;
+    pushHistory();
+    const cols = state.cols, rows = state.rows;
+    const midC = Math.floor((cols - 1) / 2);
+    const midR = Math.floor((rows - 1) / 2);
+    // Walk every cell in the primary (top-left) quadrant and propagate its depth to mirrors
+    for (let r = state.framePad; r < rows - state.framePad; r++) {
+      for (let c = state.framePad; c < cols - state.framePad; c++) {
+        // Only process cells in the primary quadrant
+        if (state.mirrorH && c > midC) continue;
+        if (state.mirrorV && r > midR) continue;
+        const depth = warpOnTop(c, r);
+        const mc = cols - 1 - c;
+        const mr = rows - 1 - r;
+        if (state.mirrorH && mc !== c) setDepth(mc, r, depth);
+        if (state.mirrorV && mr !== r) setDepth(c, mr, depth);
+        if (state.mirrorH && state.mirrorV && mc !== c && mr !== r) setDepth(mc, mr, depth);
+      }
+    }
+    scheduleRender();
+    scheduleAutosave();
+  });
+
   document.getElementById('btn-undo').addEventListener('click', undo);
   document.getElementById('btn-redo').addEventListener('click', redo);
   document.getElementById('btn-export').addEventListener('click', exportPNG);
