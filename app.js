@@ -279,42 +279,46 @@ function renderWeave() {
       g.style.cursor = 'pointer';
 
       if (top) {
+        // Weft visible as thin bands top and bottom (under-rope)
         g.appendChild(el('rect', { x, y, width: cs, height: cs * UNDER_FRAC, fill: weftCol }));
         g.appendChild(el('rect', { x, y: y + cs * (1 - UNDER_FRAC), width: cs, height: cs * UNDER_FRAC, fill: weftCol }));
+        // Warp on top — strictly clipped to cell height
         g.appendChild(el('rect', {
-          x: x + cs * UNDER_FRAC, y: y - cs * 0.04,
-          width: cs * OVER_FRAC, height: cs * 1.08,
+          x: x + cs * UNDER_FRAC, y,
+          width: cs * OVER_FRAC, height: cs,
           rx: ROUND, ry: ROUND, fill: warpCol,
         }));
         g.appendChild(el('rect', {
-          x: x + cs * UNDER_FRAC, y: y - cs * 0.04,
-          width: cs * OVER_FRAC, height: cs * 1.08,
+          x: x + cs * UNDER_FRAC, y,
+          width: cs * OVER_FRAC, height: cs,
           rx: ROUND, ry: ROUND, fill: 'rgba(0,0,0,0.18)',
           style: 'pointer-events:none',
         }));
         g.appendChild(el('rect', {
-          x: x + cs * UNDER_FRAC + 1, y: y - cs * 0.04 + 1,
-          width: cs * OVER_FRAC * 0.35, height: cs * 1.08 - 2,
+          x: x + cs * UNDER_FRAC + 1, y: y + 1,
+          width: cs * OVER_FRAC * 0.35, height: cs - 2,
           rx: ROUND, ry: ROUND, fill: 'rgba(255,255,255,0.12)',
           style: 'pointer-events:none',
         }));
       } else {
+        // Warp visible as thin bands left and right (under-rope)
         g.appendChild(el('rect', { x, y, width: cs * UNDER_FRAC, height: cs, fill: warpCol }));
         g.appendChild(el('rect', { x: x + cs * (1 - UNDER_FRAC), y, width: cs * UNDER_FRAC, height: cs, fill: warpCol }));
+        // Weft on top — strictly clipped to cell width
         g.appendChild(el('rect', {
-          x: x - cs * 0.04, y: y + cs * UNDER_FRAC,
-          width: cs * 1.08, height: cs * OVER_FRAC,
+          x, y: y + cs * UNDER_FRAC,
+          width: cs, height: cs * OVER_FRAC,
           rx: ROUND, ry: ROUND, fill: weftCol,
         }));
         g.appendChild(el('rect', {
-          x: x - cs * 0.04, y: y + cs * UNDER_FRAC,
-          width: cs * 1.08, height: cs * OVER_FRAC,
+          x, y: y + cs * UNDER_FRAC,
+          width: cs, height: cs * OVER_FRAC,
           rx: ROUND, ry: ROUND, fill: 'rgba(0,0,0,0.18)',
           style: 'pointer-events:none',
         }));
         g.appendChild(el('rect', {
-          x: x - cs * 0.04 + 1, y: y + cs * UNDER_FRAC + 1,
-          width: cs * 1.08 - 2, height: cs * OVER_FRAC * 0.35,
+          x: x + 1, y: y + cs * UNDER_FRAC + 1,
+          width: cs - 2, height: cs * OVER_FRAC * 0.35,
           rx: ROUND, ry: ROUND, fill: 'rgba(255,255,255,0.12)',
           style: 'pointer-events:none',
         }));
