@@ -270,75 +270,79 @@ function renderWeave() {
         continue;
       }
 
-      // ── Woven cell ──
+      // ── Woven cell — nested SVG clips overflow to cell boundary ──
       const top = warpOnTop(c, r);
       const isOverridden = !!state.cellOverrides[`${c},${r}`];
 
-      // Click target group
-      const g = document.createElementNS(SVG_NS, 'g');
-      g.style.cursor = 'pointer';
+      // Nested SVG provides a clipping viewport so ropes can extend freely
+      // beyond their local bounds without bleeding into adjacent cells.
+      const cell = document.createElementNS(SVG_NS, 'svg');
+      cell.setAttribute('x', x);
+      cell.setAttribute('y', y);
+      cell.setAttribute('width', cs);
+      cell.setAttribute('height', cs);
+      cell.setAttribute('overflow', 'hidden');
+      cell.style.cursor = 'pointer';
+
+      // Local coords: 0,0 is top-left of this cell
+      const EXT = cs * 0.04; // extension for seamless continuity
 
       if (top) {
-        // Weft visible as thin bands top and bottom (under-rope)
-        g.appendChild(el('rect', { x, y, width: cs, height: cs * UNDER_FRAC, fill: weftCol }));
-        g.appendChild(el('rect', { x, y: y + cs * (1 - UNDER_FRAC), width: cs, height: cs * UNDER_FRAC, fill: weftCol }));
-        // Warp on top — strictly clipped to cell height
-        g.appendChild(el('rect', {
-          x: x + cs * UNDER_FRAC, y,
-          width: cs * OVER_FRAC, height: cs,
+        cell.appendChild(el('rect', { x: 0, y: 0, width: cs, height: cs * UNDER_FRAC, fill: weftCol }));
+        cell.appendChild(el('rect', { x: 0, y: cs * (1 - UNDER_FRAC), width: cs, height: cs * UNDER_FRAC, fill: weftCol }));
+        cell.appendChild(el('rect', {
+          x: cs * UNDER_FRAC, y: -EXT,
+          width: cs * OVER_FRAC, height: cs + EXT * 2,
           rx: ROUND, ry: ROUND, fill: warpCol,
         }));
-        g.appendChild(el('rect', {
-          x: x + cs * UNDER_FRAC, y,
-          width: cs * OVER_FRAC, height: cs,
+        cell.appendChild(el('rect', {
+          x: cs * UNDER_FRAC, y: -EXT,
+          width: cs * OVER_FRAC, height: cs + EXT * 2,
           rx: ROUND, ry: ROUND, fill: 'rgba(0,0,0,0.18)',
           style: 'pointer-events:none',
         }));
-        g.appendChild(el('rect', {
-          x: x + cs * UNDER_FRAC + 1, y: y + 1,
-          width: cs * OVER_FRAC * 0.35, height: cs - 2,
+        cell.appendChild(el('rect', {
+          x: cs * UNDER_FRAC + 1, y: -EXT + 1,
+          width: cs * OVER_FRAC * 0.35, height: cs + EXT * 2 - 2,
           rx: ROUND, ry: ROUND, fill: 'rgba(255,255,255,0.12)',
           style: 'pointer-events:none',
         }));
       } else {
-        // Warp visible as thin bands left and right (under-rope)
-        g.appendChild(el('rect', { x, y, width: cs * UNDER_FRAC, height: cs, fill: warpCol }));
-        g.appendChild(el('rect', { x: x + cs * (1 - UNDER_FRAC), y, width: cs * UNDER_FRAC, height: cs, fill: warpCol }));
-        // Weft on top — strictly clipped to cell width
-        g.appendChild(el('rect', {
-          x, y: y + cs * UNDER_FRAC,
-          width: cs, height: cs * OVER_FRAC,
+        cell.appendChild(el('rect', { x: 0, y: 0, width: cs * UNDER_FRAC, height: cs, fill: warpCol }));
+        cell.appendChild(el('rect', { x: cs * (1 - UNDER_FRAC), y: 0, width: cs * UNDER_FRAC, height: cs, fill: warpCol }));
+        cell.appendChild(el('rect', {
+          x: -EXT, y: cs * UNDER_FRAC,
+          width: cs + EXT * 2, height: cs * OVER_FRAC,
           rx: ROUND, ry: ROUND, fill: weftCol,
         }));
-        g.appendChild(el('rect', {
-          x, y: y + cs * UNDER_FRAC,
-          width: cs, height: cs * OVER_FRAC,
+        cell.appendChild(el('rect', {
+          x: -EXT, y: cs * UNDER_FRAC,
+          width: cs + EXT * 2, height: cs * OVER_FRAC,
           rx: ROUND, ry: ROUND, fill: 'rgba(0,0,0,0.18)',
           style: 'pointer-events:none',
         }));
-        g.appendChild(el('rect', {
-          x: x + 1, y: y + cs * UNDER_FRAC + 1,
-          width: cs - 2, height: cs * OVER_FRAC * 0.35,
+        cell.appendChild(el('rect', {
+          x: -EXT + 1, y: cs * UNDER_FRAC + 1,
+          width: cs + EXT * 2 - 2, height: cs * OVER_FRAC * 0.35,
           rx: ROUND, ry: ROUND, fill: 'rgba(255,255,255,0.12)',
           style: 'pointer-events:none',
         }));
       }
 
-      // Override indicator: small dot in corner
       if (isOverridden) {
-        g.appendChild(el('circle', {
-          cx: x + cs - 3, cy: y + 3, r: 2,
+        cell.appendChild(el('circle', {
+          cx: cs - 3, cy: 3, r: 2,
           fill: 'rgba(255,255,255,0.6)',
           style: 'pointer-events:none',
         }));
       }
 
-      g.addEventListener('click', () => {
-        toggleCellOverride(c, r);
-        renderWeave();
-      });
+      // Transparent hit rect covers the full cell for reliable clicking
+      const hit = el('rect', { x: 0, y: 0, width: cs, height: cs, fill: 'transparent' });
+      hit.addEventListener('click', () => { toggleCellOverride(c, r); renderWeave(); });
+      cell.appendChild(hit);
 
-      svg.appendChild(g);
+      svg.appendChild(cell);
     }
   }
 
