@@ -190,6 +190,24 @@ function warpOnTop(col, row) {
   return state.cellOverrides[`${col},${row}`] ? !base : base;
 }
 
+// Base weave depth ignoring per-cell overrides — used by setDepth.
+function baseWarpOnTop(col, row) {
+  if (state.weaveType === 'plain') return (col + row) % 2 === 0;
+  if (state.weaveType === 'twill') return ((col - row) % 4 + 4) % 4 < 2;
+  return (col + row) % 2 === 0;
+}
+
+// Set cell to warpShouldBeOnTop, adding/removing override as needed. Returns true if changed.
+function setDepth(col, row, warpShouldBeOnTop) {
+  const key = `${col},${row}`;
+  const needsOverride = baseWarpOnTop(col, row) !== warpShouldBeOnTop;
+  const hasOverride = !!state.cellOverrides[key];
+  if (hasOverride === needsOverride) return false;
+  if (needsOverride) state.cellOverrides[key] = true;
+  else delete state.cellOverrides[key];
+  return true;
+}
+
 function toggleCellOverride(col, row) {
   const key = `${col},${row}`;
   if (state.cellOverrides[key]) {
@@ -206,9 +224,16 @@ const HEADER = 24;
 
 // ── Paint state (click-and-drag depth toggling) ───────────────────────────────
 let _painting = false;
-let _paintTarget = null; // true = add override, false = remove override
+let _sourceDepth = null; // warpOnTop value of the source cell after its toggle
+let _axis = null;        // 'h' | 'v' | null (undecided until threshold crossed)
+let _startX = 0;
+let _startY = 0;
+let _startC = 0;
+let _startR = 0;
 const _painted = new Set();
 let _rafPending = false;
+
+const AXIS_THRESHOLD = 8; // px of movement before axis locks
 
 function scheduleRender() {
   if (!_rafPending) {
@@ -235,15 +260,12 @@ function cellFromPointer(clientX, clientY) {
   return { c, r };
 }
 
+// Paint cell (c,r) to match the source depth. Skips cells already painted.
 function doPaint(c, r) {
   const key = `${c},${r}`;
   if (_painted.has(key)) return;
   _painted.add(key);
-  const isOverridden = !!state.cellOverrides[key];
-  if (isOverridden !== _paintTarget) {
-    toggleCellOverride(c, r);
-    scheduleRender();
-  }
+  if (setDepth(c, r, _sourceDepth)) scheduleRender();
 }
 
 function el(tag, attrs = {}, children = []) {
@@ -388,9 +410,17 @@ function renderWeave() {
         e.preventDefault();
         document.getElementById('weave-svg').setPointerCapture(e.pointerId);
         _painting = true;
+        _axis = null;
         _painted.clear();
-        _paintTarget = !state.cellOverrides[`${c},${r}`];
-        doPaint(c, r);
+        _startX = e.clientX;
+        _startY = e.clientY;
+        _startC = c;
+        _startR = r;
+        // Toggle the source cell; its new depth becomes the paint target.
+        toggleCellOverride(c, r);
+        _sourceDepth = warpOnTop(c, r);
+        _painted.add(`${c},${r}`);
+        scheduleRender();
       });
       svg.appendChild(hit);
     }
@@ -720,8 +750,18 @@ function init() {
   const svgEl = document.getElementById('weave-svg');
   svgEl.addEventListener('pointermove', e => {
     if (!_painting) return;
+    // Lock axis once pointer has moved past threshold
+    if (_axis === null) {
+      const dx = Math.abs(e.clientX - _startX);
+      const dy = Math.abs(e.clientY - _startY);
+      if (dx < AXIS_THRESHOLD && dy < AXIS_THRESHOLD) return;
+      _axis = dx >= dy ? 'h' : 'v';
+    }
     const cell = cellFromPointer(e.clientX, e.clientY);
-    if (cell) doPaint(cell.c, cell.r);
+    if (!cell) return;
+    if (_axis === 'h' && cell.r !== _startR) return;
+    if (_axis === 'v' && cell.c !== _startC) return;
+    doPaint(cell.c, cell.r);
   });
   const stopPaint = () => { _painting = false; _painted.clear(); };
   svgEl.addEventListener('pointerup', stopPaint);
