@@ -30,20 +30,20 @@ const DEFAULT_PALETTES = [
 ];
 
 let state = {
-  cols: 40,
-  rows: 40,
-  cellSize: 22,       // 28 * 0.8 ≈ 22
-  framePad: 2,        // cells of padding at each end of every rope
+  cols: 41,
+  rows: 41,
+  cellSize: 22,
+  framePad: 2,
   weaveType: 'plain',
   warpColors: [],
   weftColors: [],
-  // cellOverrides: sparse map "col,row" -> true (flip z-depth at this cell)
   cellOverrides: {},
   palettes: JSON.parse(JSON.stringify(DEFAULT_PALETTES)),
   activePaletteId: 'natural',
   selectedColorHex: DEFAULT_PALETTES[0].colors[0].hex,
-  selectedRopes: [], // array of { type, index }
+  selectedRopes: [],
   currentProjectName: 'Untitled Design',
+  gridDivisions: 0,
 };
 
 // ── Persistence ───────────────────────────────────────────────────────────────
@@ -283,6 +283,7 @@ function scheduleAutosave() {
         cellOverrides: state.cellOverrides,
         palettes: state.palettes, activePaletteId: state.activePaletteId,
         currentProjectName: state.currentProjectName,
+        gridDivisions: state.gridDivisions,
       }));
     } catch {}
   }, 1500);
@@ -304,6 +305,7 @@ function tryRestoreAutosave() {
     state.palettes        = d.palettes        ?? state.palettes;
     state.activePaletteId = d.activePaletteId ?? state.activePaletteId;
     state.currentProjectName = d.currentProjectName ?? state.currentProjectName;
+    state.gridDivisions     = d.gridDivisions     ?? 0;
     return true;
   } catch { return false; }
 }
@@ -587,6 +589,22 @@ function renderWeave() {
   ctx.fillRect(rightX, 0, HEADER, HEADER);
   ctx.fillRect(0, bottomY, HEADER, HEADER);
   ctx.fillRect(rightX, bottomY, HEADER, HEADER);
+
+  // ── Grid overlay ──
+  if (state.gridDivisions > 0) {
+    const n = state.gridDivisions;
+    const isDark = document.documentElement.classList.contains('dark');
+    ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.13)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    for (let i = 1; i < n; i++) {
+      const x = HEADER + (cols * i / n) * cs;
+      ctx.beginPath(); ctx.moveTo(x, HEADER); ctx.lineTo(x, HEADER + rows * cs); ctx.stroke();
+      const y = HEADER + (rows * i / n) * cs;
+      ctx.beginPath(); ctx.moveTo(HEADER, y); ctx.lineTo(HEADER + cols * cs, y); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
 
   scheduleAutosave();
 }
@@ -981,6 +999,7 @@ function syncInputsFromState() {
   document.getElementById('input-frame-pad').value = state.framePad;
   document.getElementById('select-weave').value = state.weaveType;
   document.getElementById('project-name-input').value = state.currentProjectName;
+  document.getElementById('select-grid-overlay').value = state.gridDivisions;
 }
 
 // ── Full render ───────────────────────────────────────────────────────────────
@@ -1031,6 +1050,11 @@ function init() {
 
   document.getElementById('btn-theme').addEventListener('click', () => {
     applyTheme(!document.documentElement.classList.contains('dark'));
+    renderWeave();
+  });
+
+  document.getElementById('select-grid-overlay').addEventListener('change', e => {
+    state.gridDivisions = +e.target.value;
     renderWeave();
   });
 
@@ -1094,7 +1118,7 @@ function init() {
 
   document.getElementById('btn-new').addEventListener('click', () => {
     if (!confirm('Start a new design? Unsaved changes will be lost.')) return;
-    state.cols = 40; state.rows = 40; state.framePad = 2;
+    state.cols = 41; state.rows = 41; state.framePad = 2;
     state.cellSize = 22;
     state.selectedRopes = [];
     state.currentProjectName = 'Untitled Design';
