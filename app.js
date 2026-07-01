@@ -880,18 +880,21 @@ function init() {
   document.getElementById('btn-select-all-warp').addEventListener('click', () => selectAllRopes('warp'));
   document.getElementById('btn-select-all-weft').addEventListener('click', () => selectAllRopes('weft'));
 
-  document.getElementById('input-cols').addEventListener('change', e => {
-    state.cols = Math.max(4, Math.min(80, +e.target.value));
+  document.getElementById('input-cols').addEventListener('input', e => {
+    const v = Math.max(4, Math.min(80, +e.target.value));
+    if (!v || v === state.cols) return;
+    state.cols = v;
     ensureRopeLengths();
     state.selectedRopes = state.selectedRopes.filter(r => !(r.type === 'warp' && r.index >= state.cols));
     renderAll();
   });
 
-  document.getElementById('input-rows').addEventListener('change', e => {
-    state.rows = Math.max(4, Math.min(80, +e.target.value));
+  document.getElementById('input-rows').addEventListener('input', e => {
+    const v = Math.max(4, Math.min(80, +e.target.value));
+    if (!v || v === state.rows) return;
+    state.rows = v;
     ensureRopeLengths();
-    if (state.selectedRopes.some(r => r.type === 'weft' && r.index >= state.rows))
-      state.selectedRopes = state.selectedRopes.filter(r => !(r.type === 'weft' && r.index >= state.rows));
+    state.selectedRopes = state.selectedRopes.filter(r => !(r.type === 'weft' && r.index >= state.rows));
     renderAll();
   });
 
