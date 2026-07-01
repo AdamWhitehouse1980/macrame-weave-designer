@@ -274,8 +274,8 @@ function renderWeave() {
       const top = warpOnTop(c, r);
       const isOverridden = !!state.cellOverrides[`${c},${r}`];
 
-      // Nested SVG provides a clipping viewport so ropes can extend freely
-      // beyond their local bounds without bleeding into adjacent cells.
+      // Nested SVG clips rope overflow to this cell's boundary, preventing
+      // bleed into adjacent cells regardless of their z-depth state.
       const cell = document.createElementNS(SVG_NS, 'svg');
       cell.setAttribute('x', x);
       cell.setAttribute('y', y);
@@ -284,8 +284,9 @@ function renderWeave() {
       cell.setAttribute('overflow', 'hidden');
       cell.style.cursor = 'pointer';
 
-      // Local coords: 0,0 is top-left of this cell
-      const EXT = cs * 0.04; // extension for seamless continuity
+      // EXT must exceed ROUND so all rounded corners are outside the clip
+      // boundary, giving seamless straight joins at cell edges.
+      const EXT = ROUND + 2;
 
       if (top) {
         cell.appendChild(el('rect', { x: 0, y: 0, width: cs, height: cs * UNDER_FRAC, fill: weftCol }));
@@ -325,14 +326,6 @@ function renderWeave() {
           x: -EXT + 1, y: cs * UNDER_FRAC + 1,
           width: cs + EXT * 2 - 2, height: cs * OVER_FRAC * 0.35,
           rx: ROUND, ry: ROUND, fill: 'rgba(255,255,255,0.12)',
-          style: 'pointer-events:none',
-        }));
-      }
-
-      if (isOverridden) {
-        cell.appendChild(el('circle', {
-          cx: cs - 3, cy: 3, r: 2,
-          fill: 'rgba(255,255,255,0.6)',
           style: 'pointer-events:none',
         }));
       }
