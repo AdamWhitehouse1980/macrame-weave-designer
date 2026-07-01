@@ -290,20 +290,10 @@ select {
   padding: 24px;
 }
 
-#weave-svg {
+#weave-canvas {
   display: block;
   cursor: default;
 }
-
-/* Rope header cells */
-.rope-header {
-  cursor: pointer;
-}
-.rope-header rect {
-  transition: opacity 0.1s;
-}
-.rope-header:hover rect { opacity: 0.8; }
-.rope-header.selected rect { stroke: #fff; stroke-width: 2; }
 
 /* ── Modal ── */
 #modal-overlay {

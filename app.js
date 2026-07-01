@@ -226,9 +226,8 @@ function toggleCellOverride(col, row) {
   }
 }
 
-// ── SVG rendering ─────────────────────────────────────────────────────────────
+// ── Canvas rendering ──────────────────────────────────────────────────────────
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
 const HEADER = 24;
 
 // ── Paint state (click-and-drag depth toggling) ───────────────────────────────
@@ -253,13 +252,12 @@ function scheduleRender() {
 
 // Convert page pointer coordinates → { c, r } in the woven zone, or null.
 function cellFromPointer(clientX, clientY) {
-  const svgEl = document.getElementById('weave-svg');
-  if (!svgEl) return null;
-  const rect = svgEl.getBoundingClientRect();
-  const vb = svgEl.viewBox.baseVal;
-  if (!vb || rect.width === 0) return null;
-  const px = (clientX - rect.left) * (vb.width / rect.width);
-  const py = (clientY - rect.top) * (vb.height / rect.height);
+  const canvas = document.getElementById('weave-canvas');
+  if (!canvas) return null;
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0) return null;
+  const px = clientX - rect.left;
+  const py = clientY - rect.top;
   const cs = state.cellSize;
   const c = Math.floor((px - HEADER) / cs);
   const r = Math.floor((py - HEADER) / cs);
@@ -277,84 +275,56 @@ function doPaint(c, r) {
   if (setDepth(c, r, _sourceDepth)) scheduleRender();
 }
 
-function el(tag, attrs = {}, children = []) {
-  const e = document.createElementNS(SVG_NS, tag);
-  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-  for (const c of children) if (c) e.appendChild(c);
-  return e;
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 function renderWeave() {
-  const svg = document.getElementById('weave-svg');
-  svg.innerHTML = '';
-
+  const canvas = document.getElementById('weave-canvas');
+  const dpr = window.devicePixelRatio || 1;
   const cs = state.cellSize;
   const cols = state.cols;
   const rows = state.rows;
   const W = HEADER + cols * cs;
   const H = HEADER + rows * cs;
 
-  svg.setAttribute('width', W);
-  svg.setAttribute('height', H);
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
 
-  // ── Gradient defs ──
-  // 4 gradients only — one highlight and one shadow per rope direction.
-  // Applied via objectBoundingBox so they scale to any rect size.
-  const defs = document.createElementNS(SVG_NS, 'defs');
-  [
-    ['gWHL', '0','0','1','0', '#fff','0.25','#fff','0'  ],  // warp: left highlight
-    ['gWSH', '0','0','1','0', '#000','0',   '#000','0.25'],  // warp: right shadow
-    ['gFHL', '0','0','0','1', '#fff','0.25','#fff','0'  ],  // weft: top highlight
-    ['gFSH', '0','0','0','1', '#000','0',   '#000','0.25'],  // weft: bottom shadow
-    // Crossing shadows: cast by top rope onto adjacent under-rope cells
-    ['gXL',  '0','0','1','0', '#000','0.4', '#000','0'  ],  // dark left → fade right
-    ['gXR',  '0','0','1','0', '#000','0',   '#000','0.4'],  // fade left → dark right
-    ['gXT',  '0','0','0','1', '#000','0.4', '#000','0'  ],  // dark top → fade down
-    ['gXB',  '0','0','0','1', '#000','0',   '#000','0.4'],  // fade up → dark bottom
-  ].forEach(([id, x1,y1,x2,y2, c1,o1,c2,o2]) => {
-    const g = el('linearGradient', { id, x1, y1, x2, y2, gradientUnits: 'objectBoundingBox' });
-    g.appendChild(el('stop', { offset: '0', 'stop-color': c1, 'stop-opacity': o1 }));
-    g.appendChild(el('stop', { offset: '1', 'stop-color': c2, 'stop-opacity': o2 }));
-    defs.appendChild(g);
-  });
-  svg.appendChild(defs);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  // ── Background ──
-  svg.appendChild(el('rect', { x: 0, y: 0, width: W, height: H, fill: '#1a1a1a' }));
-
-  // GF: rope gradient covers this fraction of the cell on each edge (~35% matches reference)
   const GF = 0.36;
-  // SF: crossing shadow width as fraction of cell (8/40 = 20% from reference)
   const SF = 0.20;
-
-  const pn = 'pointer-events:none';
-
-  function drawRopeCell(x, y, isWarp, col) {
-    svg.appendChild(el('rect', { x, y, width: cs, height: cs, fill: col }));
-    if (isWarp) {
-      const gw = cs * GF;
-      svg.appendChild(el('rect', { x,        y, width: gw, height: cs, fill: 'url(#gWHL)', style: pn }));
-      svg.appendChild(el('rect', { x: x+cs-gw, y, width: gw, height: cs, fill: 'url(#gWSH)', style: pn }));
-    } else {
-      const gh = cs * GF;
-      svg.appendChild(el('rect', { x, y,        width: cs, height: gh, fill: 'url(#gFHL)', style: pn }));
-      svg.appendChild(el('rect', { x, y: y+cs-gh, width: cs, height: gh, fill: 'url(#gFSH)', style: pn }));
-    }
-  }
-
   const fp = state.framePad;
+  const sw = cs * SF;
+
+  // Precompute colour lookups to avoid repeated segment scans
+  const wc = Array.from({length: cols}, (_, c) =>
+    Array.from({length: rows}, (_, r) => warpColorAt(c, r))
+  );
+  const fc = Array.from({length: rows}, (_, r) =>
+    Array.from({length: cols}, (_, c) => weftColorAt(r, c))
+  );
+
   function isCornerPad(c, r) {
     return (c < fp || c >= cols - fp) && (r < fp || r >= rows - fp);
   }
-
-  // Natural rope type of a pad cell: top/bottom rows extend warp, left/right columns extend weft.
   function padIsWarp(c, r) {
     return r < fp || r >= rows - fp;
   }
-
-  // True if neighbour (nc,nr) is the OPPOSITE rope type from currentIsWarp.
-  // Uses natural type for pad cells so warp-pad↔warp-woven is treated as same type (no shadow).
   function isOtherType(nc, nr, currentIsWarp) {
     if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) return false;
     if (isCornerPad(nc, nr)) return false;
@@ -362,130 +332,227 @@ function renderWeave() {
     return warpOnTop(nc, nr) !== currentIsWarp;
   }
 
-  const sw = cs * SF;
-  const pnSoft = pn + '; opacity:0.55';
+  function drawRopeCell(x, y, isWarp, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, cs, cs);
+    if (isWarp) {
+      const gw = cs * GF;
+      const hl = ctx.createLinearGradient(x, 0, x + gw, 0);
+      hl.addColorStop(0, 'rgba(255,255,255,0.25)');
+      hl.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = hl;
+      ctx.fillRect(x, y, gw, cs);
+      const sh = ctx.createLinearGradient(x + cs, 0, x + cs - gw, 0);
+      sh.addColorStop(0, 'rgba(0,0,0,0.25)');
+      sh.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = sh;
+      ctx.fillRect(x + cs - gw, y, gw, cs);
+    } else {
+      const gh = cs * GF;
+      const hl = ctx.createLinearGradient(0, y, 0, y + gh);
+      hl.addColorStop(0, 'rgba(255,255,255,0.25)');
+      hl.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = hl;
+      ctx.fillRect(x, y, cs, gh);
+      const sh = ctx.createLinearGradient(0, y + cs, 0, y + cs - gh);
+      sh.addColorStop(0, 'rgba(0,0,0,0.25)');
+      sh.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = sh;
+      ctx.fillRect(x, y + cs - gh, cs, gh);
+    }
+  }
 
-  // Crossing shadows in two tiers:
-  //   PRIMARY (full strength, conditional) — at run boundaries in the rope's travel direction.
-  //   SECONDARY (55% opacity, unconditional for woven cells) — perpendicular direction.
-  //     Always applied regardless of neighbour type, so every cell in a multi-cell run
-  //     gets identical shading (no alternating light/dark within a forced band).
+  function shadowH(x0, x1, y, h, alpha) {
+    const g = ctx.createLinearGradient(x0, 0, x1, 0);
+    g.addColorStop(0, `rgba(0,0,0,${alpha})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(Math.min(x0, x1), y, sw, h);
+  }
+  function shadowV(x, y0, y1, w, alpha) {
+    const g = ctx.createLinearGradient(0, y0, 0, y1);
+    g.addColorStop(0, `rgba(0,0,0,${alpha})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, Math.min(y0, y1), w, sw);
+  }
+
   function addCrossingShadows(x, y, c, r, top, isWoven) {
     if (!top) {
-      // weft on top — primary left/right at run entry/exit only
-      if (isOtherType(c-1, r, false)) svg.appendChild(el('rect', { x,         y, width: sw, height: cs, fill: 'url(#gXL)', style: pn }));
-      if (isOtherType(c+1, r, false)) svg.appendChild(el('rect', { x: x+cs-sw, y, width: sw, height: cs, fill: 'url(#gXR)', style: pn }));
-      // secondary top/bottom: always for woven cells (warp column always passes under)
+      if (isOtherType(c - 1, r, false)) shadowH(x, x + sw, y, cs, 0.4);
+      if (isOtherType(c + 1, r, false)) shadowH(x + cs, x + cs - sw, y, cs, 0.4);
       if (isWoven) {
-        svg.appendChild(el('rect', { x, y,         width: cs, height: sw, fill: 'url(#gXT)', style: pnSoft }));
-        svg.appendChild(el('rect', { x, y: y+cs-sw, width: cs, height: sw, fill: 'url(#gXB)', style: pnSoft }));
+        shadowV(x, y, y + sw, cs, 0.22);
+        shadowV(x, y + cs, y + cs - sw, cs, 0.22);
       }
     } else {
-      // warp on top — primary top/bottom at run entry/exit only
-      if (isOtherType(c, r-1, true)) svg.appendChild(el('rect', { x, y,         width: cs, height: sw, fill: 'url(#gXT)', style: pn }));
-      if (isOtherType(c, r+1, true)) svg.appendChild(el('rect', { x, y: y+cs-sw, width: cs, height: sw, fill: 'url(#gXB)', style: pn }));
-      // secondary left/right: always for woven cells (weft row always passes under)
+      if (isOtherType(c, r - 1, true)) shadowV(x, y, y + sw, cs, 0.4);
+      if (isOtherType(c, r + 1, true)) shadowV(x, y + cs, y + cs - sw, cs, 0.4);
       if (isWoven) {
-        svg.appendChild(el('rect', { x,         y, width: sw, height: cs, fill: 'url(#gXL)', style: pnSoft }));
-        svg.appendChild(el('rect', { x: x+cs-sw, y, width: sw, height: cs, fill: 'url(#gXR)', style: pnSoft }));
+        shadowH(x, x + sw, y, cs, 0.22);
+        shadowH(x + cs, x + cs - sw, y, cs, 0.22);
       }
     }
   }
 
+  // ── Background ──
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // ── Cell grid ──
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const x = HEADER + c * cs;
       const y = HEADER + r * cs;
-      const wCol = warpColorAt(c, r);
-      const fCol = weftColorAt(r, c);
 
       if (isPadCell(c, r)) {
         if (isCornerPad(c, r)) {
-          svg.appendChild(el('rect', { x, y, width: cs, height: cs, fill: '#1a1a1a' }));
+          ctx.fillStyle = '#1a1a1a';
+          ctx.fillRect(x, y, cs, cs);
         } else {
           const pw = padIsWarp(c, r);
-          drawRopeCell(x, y, pw, pw ? wCol : fCol);
-          addCrossingShadows(x, y, c, r, pw, false); // pad cells: primary boundary shadows only
+          drawRopeCell(x, y, pw, pw ? wc[c][r] : fc[r][c]);
+          addCrossingShadows(x, y, c, r, pw, false);
         }
         continue;
       }
 
       const top = warpOnTop(c, r);
-      drawRopeCell(x, y, top, top ? wCol : fCol);
+      drawRopeCell(x, y, top, top ? wc[c][r] : fc[r][c]);
       addCrossingShadows(x, y, c, r, top, true);
-
-      const hit = el('rect', { x, y, width: cs, height: cs, fill: 'transparent', style: 'cursor:crosshair; pointer-events:all' });
-      hit.addEventListener('pointerdown', e => {
-        e.preventDefault();
-        document.getElementById('weave-svg').setPointerCapture(e.pointerId);
-        _painting = true;
-        _axis = null;
-        _painted.clear();
-        _startX = e.clientX;
-        _startY = e.clientY;
-        _startC = c;
-        _startR = r;
-        // Toggle the source cell; its new depth becomes the paint target.
-        toggleCellOverride(c, r);
-        _sourceDepth = warpOnTop(c, r);
-        _painted.add(`${c},${r}`);
-        scheduleRender();
-      });
-      svg.appendChild(hit);
     }
   }
 
   // ── Warp headers ──
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
   for (let c = 0; c < cols; c++) {
     const x = HEADER + c * cs;
-    const topColor = warpColorAt(c, 0);
-    const g = document.createElementNS(SVG_NS, 'g');
-    g.setAttribute('class', 'rope-header' + (isSelectedRope('warp', c) ? ' selected' : ''));
-    g.appendChild(el('rect', {
-      x: x + 1, y: 1, width: cs - 2, height: HEADER - 2,
-      rx: 3, fill: topColor,
-      stroke: isSelectedRope('warp', c) ? '#fff' : 'none', 'stroke-width': 2,
-    }));
-    if (cs >= 16) {
-      g.appendChild(el('text', {
-        x: x + cs / 2, y: HEADER - 5,
-        'text-anchor': 'middle',
-        fill: contrastColor(topColor),
-        'font-size': Math.max(7, cs * 0.36),
-        'font-family': 'sans-serif', 'font-weight': '600',
-        style: 'pointer-events:none',
-      }, [document.createTextNode(c + 1)]));
+    const color = wc[c][0];
+    const selected = isSelectedRope('warp', c);
+    ctx.fillStyle = color;
+    roundRect(ctx, x + 1, 1, cs - 2, HEADER - 2, 3);
+    ctx.fill();
+    if (selected) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
     }
-    g.addEventListener('click', e => selectRope('warp', c, e.metaKey || e.ctrlKey || e.shiftKey));
-    svg.appendChild(g);
+    if (cs >= 16) {
+      ctx.font = `600 ${Math.max(7, Math.floor(cs * 0.36))}px sans-serif`;
+      ctx.fillStyle = contrastColor(color);
+      ctx.fillText(String(c + 1), x + cs / 2, HEADER - 4);
+    }
   }
 
   // ── Weft headers ──
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
   for (let r = 0; r < rows; r++) {
     const y = HEADER + r * cs;
-    const leftColor = weftColorAt(r, 0);
-    const g = document.createElementNS(SVG_NS, 'g');
-    g.setAttribute('class', 'rope-header' + (isSelectedRope('weft', r) ? ' selected' : ''));
-    g.appendChild(el('rect', {
-      x: 1, y: y + 1, width: HEADER - 2, height: cs - 2,
-      rx: 3, fill: leftColor,
-      stroke: isSelectedRope('weft', r) ? '#fff' : 'none', 'stroke-width': 2,
-    }));
-    if (cs >= 16) {
-      g.appendChild(el('text', {
-        x: HEADER / 2, y: y + cs / 2 + 4,
-        'text-anchor': 'middle',
-        fill: contrastColor(leftColor),
-        'font-size': Math.max(7, cs * 0.34),
-        'font-family': 'sans-serif', 'font-weight': '600',
-        style: 'pointer-events:none',
-      }, [document.createTextNode(r + 1)]));
+    const color = fc[r][0];
+    const selected = isSelectedRope('weft', r);
+    ctx.fillStyle = color;
+    roundRect(ctx, 1, y + 1, HEADER - 2, cs - 2, 3);
+    ctx.fill();
+    if (selected) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
     }
-    g.addEventListener('click', e => selectRope('weft', r, e.metaKey || e.ctrlKey || e.shiftKey));
-    svg.appendChild(g);
+    if (cs >= 16) {
+      ctx.font = `600 ${Math.max(7, Math.floor(cs * 0.34))}px sans-serif`;
+      ctx.fillStyle = contrastColor(color);
+      ctx.fillText(String(r + 1), HEADER / 2, y + cs / 2);
+    }
   }
 
-  svg.appendChild(el('rect', { x: 0, y: 0, width: HEADER, height: HEADER, fill: '#111' }));
+  // ── Corner ──
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, HEADER, HEADER);
+}
+
+function setupCanvasEvents() {
+  const canvas = document.getElementById('weave-canvas');
+
+  canvas.addEventListener('pointerdown', e => {
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const cs = state.cellSize;
+
+    // Warp header zone: y in [0, HEADER), x in [HEADER, ...]
+    if (py < HEADER && px >= HEADER) {
+      const c = Math.floor((px - HEADER) / cs);
+      if (c >= 0 && c < state.cols) {
+        selectRope('warp', c, e.metaKey || e.ctrlKey || e.shiftKey);
+      }
+      return;
+    }
+
+    // Weft header zone: x in [0, HEADER), y in [HEADER, ...]
+    if (px < HEADER && py >= HEADER) {
+      const r = Math.floor((py - HEADER) / cs);
+      if (r >= 0 && r < state.rows) {
+        selectRope('weft', r, e.metaKey || e.ctrlKey || e.shiftKey);
+      }
+      return;
+    }
+
+    // Weave zone: start paint stroke
+    const c = Math.floor((px - HEADER) / cs);
+    const r = Math.floor((py - HEADER) / cs);
+    if (c < 0 || c >= state.cols || r < 0 || r >= state.rows) return;
+    const fp = state.framePad;
+    if (c < fp || c >= state.cols - fp || r < fp || r >= state.rows - fp) return;
+
+    e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    _painting = true;
+    _axis = null;
+    _painted.clear();
+    _startX = e.clientX;
+    _startY = e.clientY;
+    _startC = c;
+    _startR = r;
+    toggleCellOverride(c, r);
+    _sourceDepth = warpOnTop(c, r);
+    _painted.add(`${c},${r}`);
+    scheduleRender();
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    if (!_painting) return;
+    if (_axis === null) {
+      const dx = Math.abs(e.clientX - _startX);
+      const dy = Math.abs(e.clientY - _startY);
+      if (dx < AXIS_THRESHOLD && dy < AXIS_THRESHOLD) return;
+      _axis = dx >= dy ? 'h' : 'v';
+    }
+    const cell = cellFromPointer(e.clientX, e.clientY);
+    if (!cell) return;
+    if (_axis === 'h' && cell.r !== _startR) return;
+    if (_axis === 'v' && cell.c !== _startC) return;
+    doPaint(cell.c, cell.r);
+  });
+
+  const stopPaint = () => { _painting = false; _painted.clear(); };
+  canvas.addEventListener('pointerup', stopPaint);
+  window.addEventListener('pointerup', stopPaint);
+
+  // Update cursor based on zone
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    if ((py < HEADER && px >= HEADER) || (px < HEADER && py >= HEADER)) {
+      canvas.style.cursor = 'pointer';
+    } else if (px >= HEADER && py >= HEADER) {
+      canvas.style.cursor = 'crosshair';
+    } else {
+      canvas.style.cursor = 'default';
+    }
+  });
 }
 
 function isSelectedRope(type, index) {
@@ -808,26 +875,7 @@ function init() {
   syncInputsFromState();
   renderAll();
 
-  // One-time pointer listeners for paint dragging — survive SVG re-renders
-  const svgEl = document.getElementById('weave-svg');
-  svgEl.addEventListener('pointermove', e => {
-    if (!_painting) return;
-    // Lock axis once pointer has moved past threshold
-    if (_axis === null) {
-      const dx = Math.abs(e.clientX - _startX);
-      const dy = Math.abs(e.clientY - _startY);
-      if (dx < AXIS_THRESHOLD && dy < AXIS_THRESHOLD) return;
-      _axis = dx >= dy ? 'h' : 'v';
-    }
-    const cell = cellFromPointer(e.clientX, e.clientY);
-    if (!cell) return;
-    if (_axis === 'h' && cell.r !== _startR) return;
-    if (_axis === 'v' && cell.c !== _startC) return;
-    doPaint(cell.c, cell.r);
-  });
-  const stopPaint = () => { _painting = false; _painted.clear(); };
-  svgEl.addEventListener('pointerup', stopPaint);
-  window.addEventListener('pointerup', stopPaint);
+  setupCanvasEvents();
 
   document.getElementById('btn-select-all-warp').addEventListener('click', () => selectAllRopes('warp'));
   document.getElementById('btn-select-all-weft').addEventListener('click', () => selectAllRopes('weft'));
