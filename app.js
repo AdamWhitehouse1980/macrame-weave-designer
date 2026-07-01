@@ -594,14 +594,19 @@ function renderWeave() {
   if (state.gridDivisions > 0) {
     const n = state.gridDivisions;
     const isDark = document.documentElement.classList.contains('dark');
-    ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.13)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.40)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    // Overlay spans the inner woven area only (excluding frame padding on all sides)
+    const x0 = HEADER + fp * cs;
+    const y0 = HEADER + fp * cs;
+    const innerW = (cols - 2 * fp) * cs;
+    const innerH = (rows - 2 * fp) * cs;
     for (let i = 1; i < n; i++) {
-      const x = HEADER + (cols * i / n) * cs;
-      ctx.beginPath(); ctx.moveTo(x, HEADER); ctx.lineTo(x, HEADER + rows * cs); ctx.stroke();
-      const y = HEADER + (rows * i / n) * cs;
-      ctx.beginPath(); ctx.moveTo(HEADER, y); ctx.lineTo(HEADER + cols * cs, y); ctx.stroke();
+      const x = x0 + innerW * i / n;
+      ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + innerH); ctx.stroke();
+      const y = y0 + innerH * i / n;
+      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + innerW, y); ctx.stroke();
     }
     ctx.setLineDash([]);
   }
