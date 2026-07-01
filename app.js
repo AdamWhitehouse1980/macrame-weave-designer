@@ -225,23 +225,21 @@ function renderWeave() {
   svg.setAttribute('height', H);
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
 
-  // ── Gradient defs (4 rope gradients + 4 edge-shadow gradients) ──
-  // All use objectBoundingBox so they scale to whatever rect they're applied to.
+  // ── Gradient defs ──
+  // 4 gradients only — one highlight and one shadow per rope direction.
+  // Applied via objectBoundingBox so they scale to any rect size.
   const defs = document.createElementNS(SVG_NS, 'defs');
-  const gradDefs = [
-    // Warp rope (vertical band): horizontal light-left / dark-right
-    ['gWHL', '0','0','1','0', '#fff','0.25','#fff','0'  ],
-    ['gWSH', '0','0','1','0', '#000','0',   '#000','0.25'],
-    // Weft rope (horizontal band): vertical light-top / dark-bottom
-    ['gFHL', '0','0','0','1', '#fff','0.25','#fff','0'  ],
-    ['gFSH', '0','0','0','1', '#000','0',   '#000','0.25'],
-    // Edge shadows cast by the over-rope onto the under-rope margins
-    ['gEL',  '0','0','1','0', '#000','0',   '#000','0.4'], // left margin: dark towards warp
-    ['gER',  '0','0','1','0', '#000','0.4', '#000','0'  ], // right margin: dark towards warp
-    ['gET',  '0','0','0','1', '#000','0',   '#000','0.4'], // top margin: dark towards weft
-    ['gEB',  '0','0','0','1', '#000','0.4', '#000','0'  ], // bottom margin: dark towards weft
-  ];
-  gradDefs.forEach(([id, x1,y1,x2,y2, c1,o1,c2,o2]) => {
+  [
+    ['gWHL', '0','0','1','0', '#fff','0.25','#fff','0'  ],  // warp: left highlight
+    ['gWSH', '0','0','1','0', '#000','0',   '#000','0.25'],  // warp: right shadow
+    ['gFHL', '0','0','0','1', '#fff','0.25','#fff','0'  ],  // weft: top highlight
+    ['gFSH', '0','0','0','1', '#000','0',   '#000','0.25'],  // weft: bottom shadow
+    // Crossing shadows: cast by top rope onto adjacent under-rope cells
+    ['gXL',  '0','0','1','0', '#000','0.4', '#000','0'  ],  // dark left → fade right
+    ['gXR',  '0','0','1','0', '#000','0',   '#000','0.4'],  // fade left → dark right
+    ['gXT',  '0','0','0','1', '#000','0.4', '#000','0'  ],  // dark top → fade down
+    ['gXB',  '0','0','0','1', '#000','0',   '#000','0.4'],  // fade up → dark bottom
+  ].forEach(([id, x1,y1,x2,y2, c1,o1,c2,o2]) => {
     const g = el('linearGradient', { id, x1, y1, x2, y2, gradientUnits: 'objectBoundingBox' });
     g.appendChild(el('stop', { offset: '0', 'stop-color': c1, 'stop-opacity': o1 }));
     g.appendChild(el('stop', { offset: '1', 'stop-color': c2, 'stop-opacity': o2 }));
@@ -252,25 +250,65 @@ function renderWeave() {
   // ── Background ──
   svg.appendChild(el('rect', { x: 0, y: 0, width: W, height: H, fill: '#1a1a1a' }));
 
-  // Rope geometry — flat rects, no rounding, no gaps between cells
-  const M = 0.10;        // under-rope margin fraction on each side
-  const RW = 1 - 2 * M; // over-rope fraction of cell (0.80)
-  const GF = 0.38;       // highlight/shadow strip covers this fraction of rope band
+  // GF: rope gradient covers this fraction of the cell on each edge (~35% matches reference)
+  const GF = 0.36;
+  // SF: crossing shadow width as fraction of cell (8/40 = 20% from reference)
+  const SF = 0.20;
 
-  // Draw a warp band (vertical) directly into the main SVG
-  function warpBand(bx, by, bw, bh, col) {
-    svg.appendChild(el('rect', { x: bx, y: by, width: bw, height: bh, fill: col }));
-    const gw = bw * GF;
-    svg.appendChild(el('rect', { x: bx,      y: by, width: gw, height: bh, fill: 'url(#gWHL)', style: 'pointer-events:none' }));
-    svg.appendChild(el('rect', { x: bx+bw-gw, y: by, width: gw, height: bh, fill: 'url(#gWSH)', style: 'pointer-events:none' }));
+  const pn = 'pointer-events:none';
+
+  function drawRopeCell(x, y, isWarp, col) {
+    svg.appendChild(el('rect', { x, y, width: cs, height: cs, fill: col }));
+    if (isWarp) {
+      const gw = cs * GF;
+      svg.appendChild(el('rect', { x,        y, width: gw, height: cs, fill: 'url(#gWHL)', style: pn }));
+      svg.appendChild(el('rect', { x: x+cs-gw, y, width: gw, height: cs, fill: 'url(#gWSH)', style: pn }));
+    } else {
+      const gh = cs * GF;
+      svg.appendChild(el('rect', { x, y,        width: cs, height: gh, fill: 'url(#gFHL)', style: pn }));
+      svg.appendChild(el('rect', { x, y: y+cs-gh, width: cs, height: gh, fill: 'url(#gFSH)', style: pn }));
+    }
   }
 
-  // Draw a weft band (horizontal) directly into the main SVG
-  function weftBand(bx, by, bw, bh, col) {
-    svg.appendChild(el('rect', { x: bx, y: by, width: bw, height: bh, fill: col }));
-    const gh = bh * GF;
-    svg.appendChild(el('rect', { x: bx, y: by,      width: bw, height: gh, fill: 'url(#gFHL)', style: 'pointer-events:none' }));
-    svg.appendChild(el('rect', { x: bx, y: by+bh-gh, width: bw, height: gh, fill: 'url(#gFSH)', style: 'pointer-events:none' }));
+  const fp = state.framePad;
+  function isCornerPad(c, r) {
+    return (c < fp || c >= cols - fp) && (r < fp || r >= rows - fp);
+  }
+
+  // True if neighbour (nc,nr) is the OPPOSITE rope type from currentIsWarp.
+  // Non-corner pad cells always count as "other type" — they are a frame boundary crossing.
+  function isOtherType(nc, nr, currentIsWarp) {
+    if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) return false;
+    if (isPadCell(nc, nr)) return !isCornerPad(nc, nr);
+    return warpOnTop(nc, nr) !== currentIsWarp;
+  }
+
+  const sw = cs * SF;
+  const pnSoft = pn + '; opacity:0.55'; // softer shadow for secondary (over-rope) direction
+
+  // Crossing shadows in two tiers:
+  //   PRIMARY (full strength) — on the UNDER-ROPE in the direction of the rope's travel.
+  //     Weft cells:  left/right where warp exists.
+  //     Warp cells:  top/bottom where weft exists.
+  //   SECONDARY (55% opacity) — on the OVER-ROPE in the perpendicular direction.
+  //     Shows the under-rope column/row passing through, matches Asset 2 extra gradient strips.
+  //     Keeps the directional rope gradient dominant while adding consistent crossing depth.
+  function addCrossingShadows(x, y, c, r, top) {
+    if (!top) {
+      // weft on top — primary: left/right from same-row warp
+      if (isOtherType(c-1, r, top)) svg.appendChild(el('rect', { x,         y, width: sw, height: cs, fill: 'url(#gXL)', style: pn }));
+      if (isOtherType(c+1, r, top)) svg.appendChild(el('rect', { x: x+cs-sw, y, width: sw, height: cs, fill: 'url(#gXR)', style: pn }));
+      // secondary: top/bottom from column-direction warp (shows warp column passing under)
+      if (isOtherType(c, r-1, top)) svg.appendChild(el('rect', { x, y,         width: cs, height: sw, fill: 'url(#gXT)', style: pnSoft }));
+      if (isOtherType(c, r+1, top)) svg.appendChild(el('rect', { x, y: y+cs-sw, width: cs, height: sw, fill: 'url(#gXB)', style: pnSoft }));
+    } else {
+      // warp on top — primary: top/bottom from same-column weft
+      if (isOtherType(c, r-1, top)) svg.appendChild(el('rect', { x, y,         width: cs, height: sw, fill: 'url(#gXT)', style: pn }));
+      if (isOtherType(c, r+1, top)) svg.appendChild(el('rect', { x, y: y+cs-sw, width: cs, height: sw, fill: 'url(#gXB)', style: pn }));
+      // secondary: left/right from row-direction weft (shows weft row passing under)
+      if (isOtherType(c-1, r, top)) svg.appendChild(el('rect', { x,         y, width: sw, height: cs, fill: 'url(#gXL)', style: pnSoft }));
+      if (isOtherType(c+1, r, top)) svg.appendChild(el('rect', { x: x+cs-sw, y, width: sw, height: cs, fill: 'url(#gXR)', style: pnSoft }));
+    }
   }
 
   for (let r = 0; r < rows; r++) {
@@ -281,43 +319,24 @@ function renderWeave() {
       const fCol = weftColorAt(r, c);
 
       if (isPadCell(c, r)) {
-        const p = state.framePad;
-        const isTop = r < p, isBot = r >= rows - p;
-        const isLeft = c < p, isRight = c >= cols - p;
-        if ((isTop || isBot) && !isLeft && !isRight) {
-          warpBand(x + M * cs, y, RW * cs, cs, wCol);
-        } else if ((isLeft || isRight) && !isTop && !isBot) {
-          weftBand(x, y + M * cs, cs, RW * cs, fCol);
+        const isTopBot = r < fp || r >= rows - fp;
+        const isLeftRight = c < fp || c >= cols - fp;
+        if (isCornerPad(c, r)) {
+          svg.appendChild(el('rect', { x, y, width: cs, height: cs, fill: '#1a1a1a' }));
+        } else if (isTopBot) {
+          drawRopeCell(x, y, true, wCol);
+        } else {
+          drawRopeCell(x, y, false, fCol);
         }
         continue;
       }
 
       const top = warpOnTop(c, r);
+      drawRopeCell(x, y, top, top ? wCol : fCol);
+      addCrossingShadows(x, y, c, r, top);
 
-      if (top) {
-        // Under rope (weft) visible as thin strips left and right
-        const mx = M * cs;
-        svg.appendChild(el('rect', { x,        y, width: mx, height: cs, fill: fCol }));
-        svg.appendChild(el('rect', { x: x+cs-mx, y, width: mx, height: cs, fill: fCol }));
-        // Edge shadow: over-rope casts shadow onto the under-rope margins
-        svg.appendChild(el('rect', { x,        y, width: mx, height: cs, fill: 'url(#gEL)', style: 'pointer-events:none' }));
-        svg.appendChild(el('rect', { x: x+cs-mx, y, width: mx, height: cs, fill: 'url(#gER)', style: 'pointer-events:none' }));
-        // Over rope (warp)
-        warpBand(x + mx, y, RW * cs, cs, wCol);
-      } else {
-        // Under rope (warp) visible as thin strips top and bottom
-        const my = M * cs;
-        svg.appendChild(el('rect', { x, y,        width: cs, height: my, fill: wCol }));
-        svg.appendChild(el('rect', { x, y: y+cs-my, width: cs, height: my, fill: wCol }));
-        // Edge shadow: over-rope casts shadow onto the under-rope margins
-        svg.appendChild(el('rect', { x, y,        width: cs, height: my, fill: 'url(#gET)', style: 'pointer-events:none' }));
-        svg.appendChild(el('rect', { x, y: y+cs-my, width: cs, height: my, fill: 'url(#gEB)', style: 'pointer-events:none' }));
-        // Over rope (weft)
-        weftBand(x, y + my, cs, RW * cs, fCol);
-      }
-
-      // Transparent hit rect for cell click
-      const hit = el('rect', { x, y, width: cs, height: cs, fill: 'transparent', style: 'cursor:pointer' });
+      // pointer-events:all ensures the transparent rect receives clicks even in strict SVG rendering
+      const hit = el('rect', { x, y, width: cs, height: cs, fill: 'transparent', style: 'cursor:pointer; pointer-events:all' });
       hit.addEventListener('click', () => { toggleCellOverride(c, r); renderWeave(); });
       svg.appendChild(hit);
     }
