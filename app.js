@@ -765,9 +765,9 @@ function contrastColor(hex) {
 // ── Palette helpers ───────────────────────────────────────────────────────────
 
 // ── Color extraction from image ───────────────────────────────────────────────
-function extractDominantColors(img, maxColors = 8) {
-  // Draw image to an offscreen canvas, capped at 200px to keep sampling fast
-  const MAX = 200;
+function extractDominantColors(img, maxColors = 6) {
+  // Draw image scaled to max 300px for fast sampling with enough resolution
+  const MAX = 300;
   const scale = Math.min(1, MAX / Math.max(img.width, img.height));
   const w = Math.round(img.width * scale);
   const h = Math.round(img.height * scale);
@@ -778,67 +778,50 @@ function extractDominantColors(img, maxColors = 8) {
 
   const data = ctx.getImageData(0, 0, w, h).data;
 
-  // Sample every 4th pixel, skip near-white, near-black, and low-saturation
-  const pixels = [];
-  for (let i = 0; i < data.length; i += 16) {
-    const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
-    if (a < 200) continue; // skip transparent
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    const lightness = (max + min) / 2;
-    const saturation = max === min ? 0 : (max - min) / (lightness < 128 ? max + min : 510 - max - min);
-    if (lightness > 240 || lightness < 15) continue; // skip pure white/black
-    if (saturation < 0.08) continue; // skip near-grey
-    pixels.push([r, g, b]);
+  // Quantize each pixel into coarse buckets (step=24 → ~10 steps per channel)
+  // This merges similar shades into the same bucket so large flat areas dominate
+  const STEP = 24;
+  const freq = new Map();
+  const bucketRgb = new Map(); // store sum for averaging within bucket
+
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 200) continue; // skip transparent
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+
+    // Quantize
+    const qr = Math.round(r / STEP) * STEP;
+    const qg = Math.round(g / STEP) * STEP;
+    const qb = Math.round(b / STEP) * STEP;
+    const key = (qr << 16) | (qg << 8) | qb;
+
+    freq.set(key, (freq.get(key) ?? 0) + 1);
+    if (!bucketRgb.has(key)) bucketRgb.set(key, [0, 0, 0, 0]);
+    const acc = bucketRgb.get(key);
+    acc[0] += r; acc[1] += g; acc[2] += b; acc[3]++;
   }
 
-  // If too few colorful pixels, include all non-transparent
-  if (pixels.length < 50) {
-    pixels.length = 0;
-    for (let i = 0; i < data.length; i += 16) {
-      if (data[i+3] < 200) continue;
-      pixels.push([data[i], data[i+1], data[i+2]]);
-    }
-  }
+  if (!freq.size) return ['#cccccc'];
 
-  if (!pixels.length) return ['#cccccc'];
+  // Sort buckets by pixel count descending (most dominant area first)
+  const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1]);
 
-  // Median-cut quantization
-  function medianCut(bucket, depth) {
-    if (depth === 0 || bucket.length < 2) {
-      // Return average color of bucket
-      const avg = bucket.reduce((a, p) => [a[0]+p[0], a[1]+p[1], a[2]+p[2]], [0,0,0]);
-      return [avg.map(v => Math.round(v / bucket.length))];
-    }
-    // Find channel with greatest range
-    const ranges = [0,1,2].map(ch => {
-      const vals = bucket.map(p => p[ch]);
-      return Math.max(...vals) - Math.min(...vals);
-    });
-    const ch = ranges.indexOf(Math.max(...ranges));
-    bucket.sort((a, b) => a[ch] - b[ch]);
-    const mid = Math.floor(bucket.length / 2);
-    return [
-      ...medianCut(bucket.slice(0, mid), depth - 1),
-      ...medianCut(bucket.slice(mid), depth - 1),
-    ];
-  }
-
-  const depth = Math.ceil(Math.log2(maxColors));
-  const quantized = medianCut(pixels, depth);
-
-  // Convert to hex, deduplicate colors that are too similar
-  const toHex = ([r, g, b]) => '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+  // Pick top colors, skipping any too visually similar to already-chosen ones
   const colorDist = (a, b) => Math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2);
+  const toHex = ([r, g, b]) => '#' + [r, g, b].map(v => Math.min(255, v).toString(16).padStart(2, '0')).join('');
 
-  const result = [];
-  for (const color of quantized) {
-    if (result.every(existing => colorDist(existing, color) > 30)) {
-      result.push(color);
+  const chosen = [];
+  for (const [key] of sorted) {
+    const acc = bucketRgb.get(key);
+    const n = acc[3];
+    const avg = [Math.round(acc[0] / n), Math.round(acc[1] / n), Math.round(acc[2] / n)];
+    // Skip if too similar to an already-chosen color (Euclidean distance < 40)
+    if (chosen.every(c => colorDist(c, avg) >= 40)) {
+      chosen.push(avg);
     }
-    if (result.length >= maxColors) break;
+    if (chosen.length >= maxColors) break;
   }
 
-  return result.map(toHex);
+  return chosen.map(toHex);
 }
 
 function activePalette() {
