@@ -764,6 +764,83 @@ function contrastColor(hex) {
 
 // ── Palette helpers ───────────────────────────────────────────────────────────
 
+// ── Color extraction from image ───────────────────────────────────────────────
+function extractDominantColors(img, maxColors = 8) {
+  // Draw image to an offscreen canvas, capped at 200px to keep sampling fast
+  const MAX = 200;
+  const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+
+  const data = ctx.getImageData(0, 0, w, h).data;
+
+  // Sample every 4th pixel, skip near-white, near-black, and low-saturation
+  const pixels = [];
+  for (let i = 0; i < data.length; i += 16) {
+    const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+    if (a < 200) continue; // skip transparent
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const lightness = (max + min) / 2;
+    const saturation = max === min ? 0 : (max - min) / (lightness < 128 ? max + min : 510 - max - min);
+    if (lightness > 240 || lightness < 15) continue; // skip pure white/black
+    if (saturation < 0.08) continue; // skip near-grey
+    pixels.push([r, g, b]);
+  }
+
+  // If too few colorful pixels, include all non-transparent
+  if (pixels.length < 50) {
+    pixels.length = 0;
+    for (let i = 0; i < data.length; i += 16) {
+      if (data[i+3] < 200) continue;
+      pixels.push([data[i], data[i+1], data[i+2]]);
+    }
+  }
+
+  if (!pixels.length) return ['#cccccc'];
+
+  // Median-cut quantization
+  function medianCut(bucket, depth) {
+    if (depth === 0 || bucket.length < 2) {
+      // Return average color of bucket
+      const avg = bucket.reduce((a, p) => [a[0]+p[0], a[1]+p[1], a[2]+p[2]], [0,0,0]);
+      return [avg.map(v => Math.round(v / bucket.length))];
+    }
+    // Find channel with greatest range
+    const ranges = [0,1,2].map(ch => {
+      const vals = bucket.map(p => p[ch]);
+      return Math.max(...vals) - Math.min(...vals);
+    });
+    const ch = ranges.indexOf(Math.max(...ranges));
+    bucket.sort((a, b) => a[ch] - b[ch]);
+    const mid = Math.floor(bucket.length / 2);
+    return [
+      ...medianCut(bucket.slice(0, mid), depth - 1),
+      ...medianCut(bucket.slice(mid), depth - 1),
+    ];
+  }
+
+  const depth = Math.ceil(Math.log2(maxColors));
+  const quantized = medianCut(pixels, depth);
+
+  // Convert to hex, deduplicate colors that are too similar
+  const toHex = ([r, g, b]) => '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+  const colorDist = (a, b) => Math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2);
+
+  const result = [];
+  for (const color of quantized) {
+    if (result.every(existing => colorDist(existing, color) > 30)) {
+      result.push(color);
+    }
+    if (result.length >= maxColors) break;
+  }
+
+  return result.map(toHex);
+}
+
 function activePalette() {
   return state.palettes.find(p => p.id === state.activePaletteId) ?? state.palettes[0];
 }
@@ -1208,6 +1285,32 @@ function init() {
   });
 
   document.getElementById('btn-new-palette').addEventListener('click', () => openPaletteEditor(null));
+
+  // ── Extract palette from image ──────────────────────────────────────────────
+  document.getElementById('btn-extract-palette').addEventListener('click', () => {
+    document.getElementById('input-palette-image').click();
+  });
+
+  document.getElementById('input-palette-image').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    const img = new Image();
+    img.onload = () => {
+      const colors = extractDominantColors(img, 8);
+      const palette = {
+        id: 'palette-' + Date.now(),
+        name: file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '),
+        colors: colors.map((hex, i) => ({ hex, name: 'Colour ' + (i + 1) })),
+      };
+      // Open the palette editor pre-filled with extracted colors
+      editingPalette = palette;
+      document.getElementById('palette-name-input').value = palette.name;
+      document.getElementById('palette-editor').classList.remove('hidden');
+      renderColorEditorList();
+    };
+    img.src = URL.createObjectURL(file);
+  });
 
   document.getElementById('btn-add-color').addEventListener('click', () => {
     if (!editingPalette) return;

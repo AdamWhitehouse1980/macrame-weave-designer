@@ -71,7 +71,13 @@
     <div id="main">
       <aside id="sidebar">
         <section class="panel" id="palette-panel">
-          <h3>Palette <button id="btn-new-palette" class="small">+ New</button></h3>
+          <h3>Palette
+            <div style="display:flex;gap:4px">
+              <button id="btn-new-palette" class="small">+ New</button>
+              <button id="btn-extract-palette" class="small" title="Extract palette from image">From image</button>
+              <input type="file" id="input-palette-image" accept="image/*" style="display:none" />
+            </div>
+          </h3>
           <div id="palette-selector"></div>
           <div id="palette-swatches"></div>
           <div id="palette-editor" class="hidden">
