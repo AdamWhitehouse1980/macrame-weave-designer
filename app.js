@@ -253,22 +253,33 @@ let _histIdx = -1;
 
 function pushHistory() {
   _history = _history.slice(0, _histIdx + 1);
-  _history.push(JSON.parse(JSON.stringify(state.cellOverrides)));
+  _history.push({
+    cellOverrides: JSON.parse(JSON.stringify(state.cellOverrides)),
+    warpColors:    JSON.parse(JSON.stringify(state.warpColors)),
+    weftColors:    JSON.parse(JSON.stringify(state.weftColors)),
+  });
   if (_history.length > 50) _history.shift(); else _histIdx++;
+}
+
+function applySnapshot(snap) {
+  state.cellOverrides = JSON.parse(JSON.stringify(snap.cellOverrides));
+  state.warpColors    = JSON.parse(JSON.stringify(snap.warpColors));
+  state.weftColors    = JSON.parse(JSON.stringify(snap.weftColors));
+  scheduleRender();
+  renderRopeSegmentEditor();
+  renderPalette();
 }
 
 function undo() {
   if (_histIdx <= 0) return;
   _histIdx--;
-  state.cellOverrides = JSON.parse(JSON.stringify(_history[_histIdx]));
-  scheduleRender();
+  applySnapshot(_history[_histIdx]);
 }
 
 function redo() {
   if (_histIdx >= _history.length - 1) return;
   _histIdx++;
-  state.cellOverrides = JSON.parse(JSON.stringify(_history[_histIdx]));
-  scheduleRender();
+  applySnapshot(_history[_histIdx]);
 }
 
 // ── Auto-save ─────────────────────────────────────────────────────────────────
@@ -736,11 +747,15 @@ function selectedRopeType() {
 
 function selectRope(type, index, additive = false) {
   if (additive && (selectedRopeType() === type || state.selectedRopes.length === 0)) {
+    // ⌘/Ctrl+click: toggle individual rope in/out of selection
     if (isSelectedRope(type, index)) {
       state.selectedRopes = state.selectedRopes.filter(r => !(r.type === type && r.index === index));
     } else {
       state.selectedRopes = [...state.selectedRopes, { type, index }];
     }
+  } else if (isSelectedRope(type, index) && state.selectedRopes.length === 1) {
+    // Clicking the single already-selected rope → deselect all
+    state.selectedRopes = [];
   } else {
     state.selectedRopes = [{ type, index }];
   }
@@ -920,6 +935,7 @@ function openInlineColorEditor(colorObj) {
   saveBtn.addEventListener('click', () => {
     const newHex = /^#[0-9a-fA-F]{6}$/.test(hexIn.value) ? hexIn.value.toLowerCase() : colorIn.value;
     const newName = nameIn.value.trim() || colorObj.name;
+    pushHistory();
     if (newHex !== oldHex) replaceRopeColor(oldHex, newHex);
     colorObj.hex = newHex;
     colorObj.name = newName;
@@ -949,18 +965,61 @@ function closeInlineColorEditor() {
 function renderPalette() {
   const sel = document.getElementById('palette-selector');
   sel.innerHTML = '';
+
+  // ── Dropdown row ──
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:10px';
+
+  const dropdown = document.createElement('select');
+  dropdown.style.cssText = 'flex:1;font-size:12px';
   state.palettes.forEach(p => {
-    const btn = document.createElement('button');
-    btn.textContent = p.name;
-    btn.className = 'small' + (p.id === state.activePaletteId ? ' active' : '');
-    btn.addEventListener('click', () => {
-      closeInlineColorEditor();
-      state.activePaletteId = p.id;
-      state.selectedColorHex = activePalette().colors[0]?.hex ?? '#cccccc';
-      renderPalette();
-    });
-    sel.appendChild(btn);
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name;
+    opt.selected = p.id === state.activePaletteId;
+    dropdown.appendChild(opt);
   });
+  dropdown.addEventListener('change', () => {
+    closeInlineColorEditor();
+    state.activePaletteId = dropdown.value;
+    state.selectedColorHex = activePalette().colors[0]?.hex ?? '#cccccc';
+    renderPalette();
+  });
+
+  const renameBtn = document.createElement('button');
+  renameBtn.className = 'icon-btn';
+  renameBtn.title = 'Rename palette';
+  renameBtn.textContent = '✎';
+  renameBtn.addEventListener('click', () => {
+    const p = activePalette();
+    const name = window.prompt('Rename palette:', p.name);
+    if (name && name.trim() && name.trim() !== p.name) {
+      p.name = name.trim();
+      renderPalette();
+      scheduleAutosave();
+    }
+  });
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'icon-btn';
+  deleteBtn.title = 'Delete palette';
+  deleteBtn.textContent = '×';
+  deleteBtn.style.color = 'var(--danger)';
+  deleteBtn.addEventListener('click', () => {
+    if (state.palettes.length <= 1) { alert('You need at least one palette.'); return; }
+    if (!window.confirm(`Delete "${activePalette().name}"?`)) return;
+    state.palettes = state.palettes.filter(p => p.id !== state.activePaletteId);
+    state.activePaletteId = state.palettes[0].id;
+    state.selectedColorHex = activePalette().colors[0]?.hex ?? '#cccccc';
+    closeInlineColorEditor();
+    renderPalette();
+    scheduleAutosave();
+  });
+
+  row.appendChild(dropdown);
+  row.appendChild(renameBtn);
+  row.appendChild(deleteBtn);
+  sel.appendChild(row);
 
   const sw = document.getElementById('palette-swatches');
   sw.innerHTML = '';
@@ -1013,12 +1072,14 @@ function renderPalette() {
 
 function applyColorToSelected() {
   if (!state.selectedRopes.length) return;
+  pushHistory();
   state.selectedRopes.forEach(({ type, index }) => {
     const segs = type === 'warp' ? state.warpColors[index] : state.weftColors[index];
     if (segs) segs[0].colorHex = state.selectedColorHex;
   });
   renderWeave();
   renderRopeSegmentEditor();
+  scheduleAutosave();
 }
 
 // ── Rope segment editor ───────────────────────────────────────────────────────
@@ -1059,12 +1120,14 @@ function renderRopeSegmentEditor() {
       sw.style.background = c.hex;
       sw.title = c.name;
       sw.addEventListener('click', () => {
+        pushHistory();
         sel.forEach(({ type: t, index: i }) => {
           const segs = t === 'warp' ? state.warpColors[i] : state.weftColors[i];
           if (segs) segs[0].colorHex = c.hex;
         });
         renderWeave();
         renderRopeSegmentEditor();
+        scheduleAutosave();
       });
       strip.appendChild(sw);
     });
@@ -1096,9 +1159,11 @@ function renderRopeSegmentEditor() {
       sw.style.background = c.hex;
       sw.title = c.name;
       sw.addEventListener('click', () => {
+        pushHistory();
         seg.colorHex = c.hex;
         renderWeave();
         renderRopeSegmentEditor();
+        scheduleAutosave();
       });
       strip.appendChild(sw);
     });
