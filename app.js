@@ -828,6 +828,124 @@ function activePalette() {
   return state.palettes.find(p => p.id === state.activePaletteId) ?? state.palettes[0];
 }
 
+// ── Colour helpers ────────────────────────────────────────────────────────────
+function countRopesWithHex(hex) {
+  let n = 0;
+  state.warpColors.forEach(segs => { if (segs?.[0]?.colorHex === hex) n++; });
+  state.weftColors.forEach(segs => { if (segs?.[0]?.colorHex === hex) n++; });
+  return n;
+}
+
+function selectAllRopesWithHex(hex) {
+  state.selectedRopes = [];
+  state.warpColors.forEach((segs, i) => {
+    if (segs?.[0]?.colorHex === hex) state.selectedRopes.push({ type: 'warp', index: i });
+  });
+  state.weftColors.forEach((segs, r) => {
+    if (segs?.[0]?.colorHex === hex) state.selectedRopes.push({ type: 'weft', index: r });
+  });
+  scheduleRender();
+  renderRopeSegmentEditor();
+}
+
+function replaceRopeColor(oldHex, newHex) {
+  state.warpColors.forEach(segs => { if (segs?.[0]?.colorHex === oldHex) segs[0].colorHex = newHex; });
+  state.weftColors.forEach(segs => { if (segs?.[0]?.colorHex === oldHex) segs[0].colorHex = newHex; });
+}
+
+// ── Inline palette colour editor ──────────────────────────────────────────────
+let _pceColorObj = null; // the palette color object being edited
+
+function openInlineColorEditor(colorObj) {
+  _pceColorObj = colorObj;
+  const panel = document.getElementById('palette-inline-editor');
+  const oldHex = colorObj.hex;
+  const ropeCount = countRopesWithHex(oldHex);
+
+  panel.innerHTML = '';
+  panel.classList.remove('hidden');
+
+  const title = document.createElement('div');
+  title.className = 'pce-title';
+  title.textContent = 'Edit colour';
+  panel.appendChild(title);
+
+  // Color picker + hex input row
+  const row = document.createElement('div');
+  row.className = 'pce-row';
+
+  const colorIn = document.createElement('input');
+  colorIn.type = 'color';
+  colorIn.value = colorObj.hex;
+
+  const hexIn = document.createElement('input');
+  hexIn.type = 'text';
+  hexIn.value = colorObj.hex;
+  hexIn.placeholder = '#rrggbb';
+  hexIn.style.fontFamily = 'monospace';
+  hexIn.style.fontSize = '11px';
+
+  const nameIn = document.createElement('input');
+  nameIn.type = 'text';
+  nameIn.value = colorObj.name;
+  nameIn.placeholder = 'Name';
+
+  // Sync color ↔ hex input
+  colorIn.addEventListener('input', () => {
+    hexIn.value = colorIn.value;
+  });
+  hexIn.addEventListener('input', () => {
+    if (/^#[0-9a-fA-F]{6}$/.test(hexIn.value)) colorIn.value = hexIn.value;
+  });
+
+  row.appendChild(colorIn);
+  row.appendChild(hexIn);
+  row.appendChild(nameIn);
+  panel.appendChild(row);
+
+  // Rope count info
+  if (ropeCount > 0) {
+    const info = document.createElement('div');
+    info.className = 'pce-rope-count';
+    info.textContent = `Used in ${ropeCount} rope${ropeCount !== 1 ? 's' : ''} — will be updated automatically`;
+    panel.appendChild(info);
+  }
+
+  // Actions
+  const actions = document.createElement('div');
+  actions.className = 'pce-actions';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = 'Save';
+  saveBtn.addEventListener('click', () => {
+    const newHex = /^#[0-9a-fA-F]{6}$/.test(hexIn.value) ? hexIn.value.toLowerCase() : colorIn.value;
+    const newName = nameIn.value.trim() || colorObj.name;
+    if (newHex !== oldHex) replaceRopeColor(oldHex, newHex);
+    colorObj.hex = newHex;
+    colorObj.name = newName;
+    if (state.selectedColorHex === oldHex) state.selectedColorHex = newHex;
+    closeInlineColorEditor();
+    renderPalette();
+    scheduleRender();
+    scheduleAutosave();
+  });
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', closeInlineColorEditor);
+
+  actions.appendChild(saveBtn);
+  actions.appendChild(cancelBtn);
+  panel.appendChild(actions);
+}
+
+function closeInlineColorEditor() {
+  _pceColorObj = null;
+  const panel = document.getElementById('palette-inline-editor');
+  panel.classList.add('hidden');
+  panel.innerHTML = '';
+}
+
 function renderPalette() {
   const sel = document.getElementById('palette-selector');
   sel.innerHTML = '';
@@ -836,6 +954,7 @@ function renderPalette() {
     btn.textContent = p.name;
     btn.className = 'small' + (p.id === state.activePaletteId ? ' active' : '');
     btn.addEventListener('click', () => {
+      closeInlineColorEditor();
       state.activePaletteId = p.id;
       state.selectedColorHex = activePalette().colors[0]?.hex ?? '#cccccc';
       renderPalette();
@@ -846,17 +965,50 @@ function renderPalette() {
   const sw = document.getElementById('palette-swatches');
   sw.innerHTML = '';
   activePalette().colors.forEach(c => {
+    const wrap = document.createElement('div');
+    wrap.className = 'swatch-wrap';
+
     const div = document.createElement('div');
     div.className = 'swatch' + (c.hex === state.selectedColorHex ? ' selected' : '');
     div.style.background = c.hex;
     div.title = c.name;
     div.addEventListener('click', () => {
+      if (_pceColorObj === c) { closeInlineColorEditor(); return; }
+      closeInlineColorEditor();
       state.selectedColorHex = c.hex;
       renderPalette();
       applyColorToSelected();
     });
-    sw.appendChild(div);
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'swatch-edit-btn';
+    editBtn.title = 'Edit colour';
+    editBtn.textContent = '✎';
+    editBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (_pceColorObj === c) { closeInlineColorEditor(); return; }
+      openInlineColorEditor(c);
+    });
+
+    wrap.appendChild(div);
+    wrap.appendChild(editBtn);
+    sw.appendChild(wrap);
   });
+
+  // "Select all ropes using this colour" button
+  const existingBtn = document.getElementById('btn-select-by-color');
+  if (existingBtn) existingBtn.remove();
+
+  const ropeCount = countRopesWithHex(state.selectedColorHex);
+  if (ropeCount > 0) {
+    const dot = `<span class="color-dot" style="background:${state.selectedColorHex}"></span>`;
+    const btn = document.createElement('button');
+    btn.id = 'btn-select-by-color';
+    btn.className = 'select-by-color-btn';
+    btn.innerHTML = `${dot} Select all ${ropeCount} rope${ropeCount !== 1 ? 's' : ''} using this colour`;
+    btn.addEventListener('click', () => selectAllRopesWithHex(state.selectedColorHex));
+    sw.insertAdjacentElement('afterend', btn);
+  }
 }
 
 function applyColorToSelected() {

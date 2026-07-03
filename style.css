@@ -334,6 +334,78 @@ select:focus {
   box-shadow: 0 0 0 1px var(--surface), 0 0 0 3px var(--text);
 }
 
+/* ── Swatch edit button ── */
+.swatch-wrap { position: relative; flex-shrink: 0; }
+.swatch-edit-btn {
+  position: absolute;
+  bottom: -3px; right: -3px;
+  width: 15px; height: 15px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border-mid);
+  font-size: 8px; padding: 0;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.12s;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text-dim); line-height: 1;
+  box-shadow: var(--shadow-sm);
+}
+.swatch-wrap:hover .swatch-edit-btn { opacity: 1; pointer-events: auto; }
+.swatch-edit-btn:hover { background: var(--surface3); color: var(--text); }
+
+/* ── Inline colour editor ── */
+#palette-inline-editor {
+  margin-top: 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  animation: slideDown 0.12s ease;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.pce-title {
+  font-size: 10px; font-weight: 600; color: var(--text-faint);
+  text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;
+}
+.pce-row { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+.pce-row input[type="color"] {
+  width: 32px; height: 32px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 2px; background: none;
+  cursor: pointer; flex-shrink: 0;
+}
+.pce-row input[type="text"] {
+  flex: 1; background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); border-radius: var(--radius-sm);
+  padding: 4px 7px; font-size: 12px; font-family: inherit;
+}
+.pce-row input[type="text"]:focus {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.pce-rope-count { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
+.pce-actions { display: flex; gap: 6px; }
+.pce-actions button { flex: 1; }
+
+/* ── Select-by-colour button ── */
+.select-by-color-btn {
+  display: flex; align-items: center; gap: 7px;
+  width: 100%; margin-top: 8px; font-size: 11px;
+  color: var(--text-dim); background: transparent;
+  border: 1px dashed var(--border-mid);
+  padding: 5px 10px; border-radius: var(--radius);
+  cursor: pointer; transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.select-by-color-btn:hover {
+  background: var(--surface2); border-color: var(--accent);
+  color: var(--text); border-style: solid;
+}
+.select-by-color-btn .color-dot {
+  width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,0.15);
+}
+
 #palette-editor { margin-top: 10px; }
 
 #palette-name-input {
