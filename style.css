@@ -370,20 +370,21 @@ select:focus {
   font-size: 10px; font-weight: 600; color: var(--text-faint);
   text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;
 }
-.pce-row { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+.pce-row { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; overflow: hidden; }
 .pce-row input[type="color"] {
   width: 32px; height: 32px; border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 2px; background: none;
   cursor: pointer; flex-shrink: 0;
 }
 .pce-row input[type="text"] {
-  flex: 1; background: var(--surface); border: 1px solid var(--border);
+  flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--border);
   color: var(--text); border-radius: var(--radius-sm);
   padding: 4px 7px; font-size: 12px; font-family: inherit;
 }
 .pce-row input[type="text"]:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring);
 }
+.pce-row input.pce-hex { flex: 0 0 90px !important; font-family: monospace; }
 .pce-rope-count { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
 .pce-actions { display: flex; gap: 6px; }
 .pce-actions button { flex: 1; }

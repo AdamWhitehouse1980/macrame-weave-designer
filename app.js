@@ -885,13 +885,12 @@ function openInlineColorEditor(colorObj) {
   hexIn.type = 'text';
   hexIn.value = colorObj.hex;
   hexIn.placeholder = '#rrggbb';
-  hexIn.style.fontFamily = 'monospace';
-  hexIn.style.fontSize = '11px';
+  hexIn.className = 'pce-hex';
 
   const nameIn = document.createElement('input');
   nameIn.type = 'text';
   nameIn.value = colorObj.name;
-  nameIn.placeholder = 'Name';
+  nameIn.placeholder = 'Colour name';
 
   // Sync color ↔ hex input
   colorIn.addEventListener('input', () => {
