@@ -1553,10 +1553,7 @@ function init() {
   document.getElementById('btn-new-palette').addEventListener('click', () => openPaletteEditor(null));
 
   // ── Extract palette from image ──────────────────────────────────────────────
-  document.getElementById('btn-extract-palette').addEventListener('click', () => {
-    document.getElementById('input-palette-image').click();
-  });
-
+  // (trigger button is created dynamically in renderPalette — only the file input needs wiring here)
   document.getElementById('input-palette-image').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
