@@ -1612,31 +1612,52 @@ function init() {
   const savedW = localStorage.getItem(SIDEBAR_KEY);
   if (savedW) sidebar.style.width = savedW + 'px';
 
-  let _resizing = false, _startX = 0, _startW = 0;
+  let _startX = 0, _startW = 0;
 
-  handle.addEventListener('mousedown', e => {
-    e.preventDefault();
-    _resizing = true;
-    _startX = e.clientX;
+  // Transparent overlay captures all pointer events during resize,
+  // preventing the canvas from receiving any drags.
+  const _resizeOverlay = document.createElement('div');
+  _resizeOverlay.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:col-resize;';
+
+  function startResize(clientX) {
+    _startX = clientX;
     _startW = sidebar.offsetWidth;
     handle.classList.add('dragging');
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  });
+    document.body.appendChild(_resizeOverlay);
+  }
 
-  document.addEventListener('mousemove', e => {
-    if (!_resizing) return;
-    const w = Math.min(520, Math.max(200, _startW + e.clientX - _startX));
+  function doResize(clientX) {
+    const w = Math.min(520, Math.max(200, _startW + clientX - _startX));
     sidebar.style.width = w + 'px';
+  }
+
+  function stopResize() {
+    handle.classList.remove('dragging');
+    if (_resizeOverlay.parentNode) _resizeOverlay.parentNode.removeChild(_resizeOverlay);
+    localStorage.setItem(SIDEBAR_KEY, sidebar.offsetWidth);
+  }
+
+  handle.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    handle.setPointerCapture(e.pointerId);
+    startResize(e.clientX);
   });
 
-  document.addEventListener('mouseup', () => {
-    if (!_resizing) return;
-    _resizing = false;
-    handle.classList.remove('dragging');
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-    localStorage.setItem(SIDEBAR_KEY, sidebar.offsetWidth);
+  handle.addEventListener('pointermove', e => {
+    if (!handle.hasPointerCapture(e.pointerId)) return;
+    doResize(e.clientX);
+  });
+
+  handle.addEventListener('pointerup', e => {
+    if (!handle.hasPointerCapture(e.pointerId)) return;
+    handle.releasePointerCapture(e.pointerId);
+    stopResize();
+  });
+
+  handle.addEventListener('pointercancel', e => {
+    if (handle.hasPointerCapture(e.pointerId)) handle.releasePointerCapture(e.pointerId);
+    stopResize();
   });
 }
 
