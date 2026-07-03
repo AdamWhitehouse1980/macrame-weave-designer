@@ -986,18 +986,60 @@ function renderPalette() {
     renderPalette();
   });
 
+  const dupBtn = document.createElement('button');
+  dupBtn.className = 'icon-btn';
+  dupBtn.title = 'Duplicate palette';
+  dupBtn.textContent = '⧉';
+  dupBtn.addEventListener('click', () => {
+    const p = activePalette();
+    const copy = JSON.parse(JSON.stringify(p));
+    copy.id = 'palette-' + Date.now();
+    copy.name = p.name + ' (copy)';
+    state.palettes.push(copy);
+    state.activePaletteId = copy.id;
+    renderPalette();
+    scheduleAutosave();
+  });
+
   const renameBtn = document.createElement('button');
   renameBtn.className = 'icon-btn';
   renameBtn.title = 'Rename palette';
   renameBtn.textContent = '✎';
   renameBtn.addEventListener('click', () => {
     const p = activePalette();
-    const name = window.prompt('Rename palette:', p.name);
-    if (name && name.trim() && name.trim() !== p.name) {
-      p.name = name.trim();
+    let renameRow = sel.querySelector('.palette-rename-row');
+    if (renameRow) { renameRow.remove(); return; }
+    renameRow = document.createElement('div');
+    renameRow.className = 'palette-rename-row';
+    renameRow.style.cssText = 'display:flex;gap:6px;margin-bottom:8px';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = p.name;
+    inp.style.cssText = 'flex:1;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg-input,var(--bg));color:var(--text)';
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'icon-btn';
+    confirmBtn.title = 'Save name';
+    confirmBtn.textContent = '✓';
+    confirmBtn.style.color = 'var(--accent)';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'icon-btn';
+    cancelBtn.title = 'Cancel';
+    cancelBtn.textContent = '×';
+    const commit = () => {
+      const name = inp.value.trim();
+      if (name && name !== p.name) { p.name = name; scheduleAutosave(); }
+      renameRow.remove();
       renderPalette();
-      scheduleAutosave();
-    }
+    };
+    confirmBtn.addEventListener('click', commit);
+    cancelBtn.addEventListener('click', () => renameRow.remove());
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') renameRow.remove(); });
+    renameRow.appendChild(inp);
+    renameRow.appendChild(confirmBtn);
+    renameRow.appendChild(cancelBtn);
+    row.insertAdjacentElement('afterend', renameRow);
+    inp.focus();
+    inp.select();
   });
 
   const deleteBtn = document.createElement('button');
@@ -1017,6 +1059,7 @@ function renderPalette() {
   });
 
   row.appendChild(dropdown);
+  row.appendChild(dupBtn);
   row.appendChild(renameBtn);
   row.appendChild(deleteBtn);
   sel.appendChild(row);
