@@ -1604,6 +1604,40 @@ function init() {
     editingPalette = null;
     renderPalette();
   });
+  // ── Sidebar resize ────────────────────────────────────────────────────────
+  const sidebar = document.getElementById('sidebar');
+  const handle  = document.getElementById('sidebar-resize-handle');
+  const SIDEBAR_KEY = 'mwd-sidebar-w';
+
+  const savedW = localStorage.getItem(SIDEBAR_KEY);
+  if (savedW) sidebar.style.width = savedW + 'px';
+
+  let _resizing = false, _startX = 0, _startW = 0;
+
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    _resizing = true;
+    _startX = e.clientX;
+    _startW = sidebar.offsetWidth;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!_resizing) return;
+    const w = Math.min(520, Math.max(200, _startW + e.clientX - _startX));
+    sidebar.style.width = w + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!_resizing) return;
+    _resizing = false;
+    handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    localStorage.setItem(SIDEBAR_KEY, sidebar.offsetWidth);
+  });
 }
 
 init();
