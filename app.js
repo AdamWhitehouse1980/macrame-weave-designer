@@ -2,18 +2,6 @@
 
 const DEFAULT_PALETTES = [
   {
-    id: 'natural',
-    name: 'Natural Cotton',
-    colors: [
-      { hex: '#f5e6c8', name: 'Cream' },
-      { hex: '#d4a96a', name: 'Caramel' },
-      { hex: '#8b5e3c', name: 'Chestnut' },
-      { hex: '#3d2b1f', name: 'Espresso' },
-      { hex: '#c8bfb0', name: 'Stone' },
-      { hex: '#7a8c7e', name: 'Sage' },
-    ],
-  },
-  {
     id: 'bold',
     name: 'Bold & Modern',
     colors: [
