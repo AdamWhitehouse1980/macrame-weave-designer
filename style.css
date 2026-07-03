@@ -140,6 +140,20 @@ button.active {
   color: #fff;
   border-color: var(--accent);
 }
+#btn-save.unsaved {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+#btn-save.save-flash {
+  background: #2d6a2d;
+  color: #fff;
+  border-color: #2d6a2d;
+  transition: none;
+}
+html.dark #btn-save.save-flash {
+  background: #3a8a3a;
+  border-color: #3a8a3a;
+}
 button.danger {
   color: var(--danger);
   border-color: transparent;
@@ -333,6 +347,10 @@ select:focus {
   border-color: var(--text);
   box-shadow: 0 0 0 1px var(--surface), 0 0 0 3px var(--text);
 }
+.swatch.editing {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--surface), 0 0 0 3px var(--accent);
+}
 
 /* ── Swatch edit button ── */
 .swatch-wrap { position: relative; flex-shrink: 0; }
@@ -350,7 +368,8 @@ select:focus {
   cursor: pointer; color: var(--text-dim); line-height: 1;
   box-shadow: var(--shadow-sm);
 }
-.swatch-wrap:hover .swatch-edit-btn { opacity: 1; pointer-events: auto; }
+.swatch-wrap:hover .swatch-edit-btn,
+.swatch-wrap:has(.swatch.editing) .swatch-edit-btn { opacity: 1; pointer-events: auto; }
 .swatch-edit-btn:hover { background: var(--surface3); color: var(--text); }
 
 /* ── Inline colour editor ── */

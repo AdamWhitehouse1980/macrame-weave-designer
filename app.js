@@ -270,10 +270,36 @@ function redo() {
   applySnapshot(_history[_histIdx]);
 }
 
+// ── Dirty state ───────────────────────────────────────────────────────────────
+let _isDirty = false;
+
+function markDirty() {
+  if (_isDirty) return;
+  _isDirty = true;
+  const btn = document.getElementById('btn-save');
+  if (btn) btn.classList.add('unsaved');
+}
+
+function markClean() {
+  _isDirty = false;
+  const btn = document.getElementById('btn-save');
+  if (btn) btn.classList.remove('unsaved');
+}
+
+function flashSaved() {
+  markClean();
+  const btn = document.getElementById('btn-save');
+  if (!btn) return;
+  btn.textContent = 'Saved ✓';
+  btn.classList.add('save-flash');
+  setTimeout(() => { btn.textContent = 'Save'; btn.classList.remove('save-flash'); }, 1800);
+}
+
 // ── Auto-save ─────────────────────────────────────────────────────────────────
 let _autosaveTimer = null;
 
 function scheduleAutosave() {
+  markDirty();
   clearTimeout(_autosaveTimer);
   _autosaveTimer = setTimeout(() => {
     try {
@@ -1045,7 +1071,14 @@ function renderPalette() {
     scheduleAutosave();
   });
 
+  const fromImageBtn = document.createElement('button');
+  fromImageBtn.className = 'icon-btn';
+  fromImageBtn.title = 'Extract palette from image — upload a photo to pull its dominant colours';
+  fromImageBtn.textContent = '⬆';
+  fromImageBtn.addEventListener('click', () => document.getElementById('input-palette-image').click());
+
   row.appendChild(dropdown);
+  row.appendChild(fromImageBtn);
   row.appendChild(dupBtn);
   row.appendChild(renameBtn);
   row.appendChild(deleteBtn);
@@ -1058,7 +1091,7 @@ function renderPalette() {
     wrap.className = 'swatch-wrap';
 
     const div = document.createElement('div');
-    div.className = 'swatch' + (c.hex === state.selectedColorHex ? ' selected' : '');
+    div.className = 'swatch' + (c.hex === state.selectedColorHex ? ' selected' : '') + (_pceColorObj === c ? ' editing' : '');
     div.style.background = c.hex;
     div.title = c.name;
     div.addEventListener('click', () => {
@@ -1170,7 +1203,7 @@ function renderRopeSegmentEditor() {
   const { index } = sel[0];
   const segs = type === 'warp' ? state.warpColors[index] : state.weftColors[index];
   const maxEnd = type === 'warp' ? state.rows : state.cols;
-  title.textContent = type === 'warp' ? `Warp ${index + 1} segments` : `Weft ${index + 1} segments`;
+  title.textContent = type === 'warp' ? `Warp ${index + 1}` : `Weft ${index + 1}`;
 
   segs.forEach((seg, si) => {
     const row = document.createElement('div');
@@ -1179,6 +1212,7 @@ function renderRopeSegmentEditor() {
     const lbl = document.createElement('label');
     const prevEnd = si === 0 ? 0 : segs[si - 1].end;
     lbl.textContent = `${prevEnd + 1}–${seg.end}`;
+    if (segs.length === 1) lbl.title = 'This rope is one colour end-to-end. Use + to split it into colour segments.';
     row.appendChild(lbl);
 
     const strip = document.createElement('div');
@@ -1486,13 +1520,14 @@ function init() {
     if (name) {
       saveProject(name);
       document.getElementById('project-name-input').value = state.currentProjectName;
+      flashSaved();
     }
   });
 
   document.getElementById('btn-load').addEventListener('click', openLoadModal);
 
   document.getElementById('btn-new').addEventListener('click', () => {
-    if (!confirm('Start a new design? Unsaved changes will be lost.')) return;
+    if (_isDirty && !confirm('Start a new design? Unsaved changes will be lost.')) return;
     state.cols = 41; state.rows = 41; state.framePad = 2;
     state.cellSize = 22;
     state.selectedRopes = [];
@@ -1502,6 +1537,7 @@ function init() {
     syncInputsFromState();
     renderAll();
     pushHistory();
+    markClean();
   });
 
   document.getElementById('btn-duplicate').addEventListener('click', () => {

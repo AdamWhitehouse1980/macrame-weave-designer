@@ -28,9 +28,9 @@
         </div>
         <button id="btn-export" title="Export PNG">Export PNG</button>
         <div class="toolbar-divider"></div>
-        <button id="btn-mirror-h" title="Mirror paint horizontally">Mirror H</button>
-        <button id="btn-mirror-v" title="Mirror paint vertically">Mirror V</button>
-        <button id="btn-symmetrize" title="Apply active mirror axes to all existing overrides">Symmetrize</button>
+        <button id="btn-mirror-h" title="Mirror H — paint strokes are mirrored left↔right">Mirror H</button>
+        <button id="btn-mirror-v" title="Mirror V — paint strokes are mirrored top↔bottom">Mirror V</button>
+        <button id="btn-symmetrize" title="Symmetrize — copy the top-left quadrant to all mirror quadrants, making the whole pattern perfectly symmetrical">Symmetrize</button>
       </div>
       <div class="toolbar-right">
         <label>Columns
@@ -39,10 +39,10 @@
         <label>Rows
           <input type="number" id="input-rows" min="2" max="80" value="41" />
         </label>
-        <label>Size
+        <label title="Cell size — how large each weave crossing appears on screen">Size
           <input type="range" id="input-cell-size" min="12" max="60" value="28" />
         </label>
-        <label>Pad
+        <label title="Frame — number of border rows/columns that are locked as plain weave edging">Frame
           <input type="number" id="input-frame-pad" min="0" max="8" value="2" />
         </label>
         <label>Weave
@@ -72,12 +72,9 @@
       <aside id="sidebar">
         <section class="panel" id="palette-panel">
           <h3>Palette
-            <div style="display:flex;gap:4px">
-              <button id="btn-new-palette" class="small">+ New</button>
-              <button id="btn-extract-palette" class="small" title="Extract palette from image">From image</button>
-              <input type="file" id="input-palette-image" accept="image/*" style="display:none" />
-            </div>
+            <button id="btn-new-palette" class="small" title="Create a new empty palette">+ New</button>
           </h3>
+          <input type="file" id="input-palette-image" accept="image/*" style="display:none" />
           <div id="palette-selector"></div>
           <div id="palette-swatches"></div>
           <div id="palette-inline-editor" class="hidden"></div>
