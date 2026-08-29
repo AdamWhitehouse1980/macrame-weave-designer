@@ -16,17 +16,21 @@
         <div class="toolbar-divider"></div>
         <input type="text" id="project-name-input" class="project-name-input" value="Untitled Design" title="Click to rename" />
         <div class="toolbar-divider"></div>
-        <div class="toolbar-group">
-          <button id="btn-new" title="New design">New</button>
-          <button id="btn-save" title="Save  ⌘S">Save</button>
-          <button id="btn-duplicate" title="Duplicate design">Duplicate</button>
-          <button id="btn-load" title="Load design">Load</button>
+        <div class="file-menu-wrap">
+          <button id="btn-file-menu" title="File actions">File ▾</button>
+          <div id="file-menu" class="file-menu hidden">
+            <button id="btn-new">New design</button>
+            <button id="btn-save">Save  <span class="menu-shortcut">⌘S</span></button>
+            <button id="btn-duplicate">Duplicate</button>
+            <button id="btn-load">Load</button>
+            <div class="file-menu-divider"></div>
+            <button id="btn-export">Export PNG</button>
+          </div>
         </div>
         <div class="toolbar-group">
           <button id="btn-undo" title="Undo  ⌘Z" class="icon-btn">↩︎</button>
           <button id="btn-redo" title="Redo  ⌘⇧Z" class="icon-btn">↪︎</button>
         </div>
-        <button id="btn-export" title="Export PNG">Export PNG</button>
         <div class="toolbar-divider"></div>
         <button id="btn-mirror-h" title="Mirror H — paint strokes are mirrored left↔right">Mirror H</button>
         <button id="btn-mirror-v" title="Mirror V — paint strokes are mirrored top↔bottom">Mirror V</button>
@@ -52,6 +56,8 @@
             <option value="twill31">Twill 3/1</option>
             <option value="basket">Basket 2×2</option>
             <option value="rib">Rib</option>
+            <option value="warpFront">Warp Front</option>
+            <option value="weftFront">Weft Front</option>
           </select>
         </label>
         <label>Grid

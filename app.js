@@ -182,6 +182,10 @@ function warpOnTop(col, row) {
     base = (Math.floor(col / 2) + Math.floor(row / 2)) % 2 === 0;
   } else if (state.weaveType === 'rib') {
     base = row % 2 === 0;
+  } else if (state.weaveType === 'warpFront') {
+    base = true;
+  } else if (state.weaveType === 'weftFront') {
+    base = false;
   } else {
     base = (col + row) % 2 === 0;
   }
@@ -190,11 +194,13 @@ function warpOnTop(col, row) {
 
 // Base weave depth ignoring per-cell overrides — used by setDepth.
 function baseWarpOnTop(col, row) {
-  if (state.weaveType === 'plain')   return (col + row) % 2 === 0;
-  if (state.weaveType === 'twill')   return ((col - row) % 4 + 4) % 4 < 2;
-  if (state.weaveType === 'twill31') return ((col - row) % 4 + 4) % 4 < 3;
-  if (state.weaveType === 'basket')  return (Math.floor(col / 2) + Math.floor(row / 2)) % 2 === 0;
-  if (state.weaveType === 'rib')     return row % 2 === 0;
+  if (state.weaveType === 'plain')     return (col + row) % 2 === 0;
+  if (state.weaveType === 'twill')     return ((col - row) % 4 + 4) % 4 < 2;
+  if (state.weaveType === 'twill31')   return ((col - row) % 4 + 4) % 4 < 3;
+  if (state.weaveType === 'basket')    return (Math.floor(col / 2) + Math.floor(row / 2)) % 2 === 0;
+  if (state.weaveType === 'rib')       return row % 2 === 0;
+  if (state.weaveType === 'warpFront') return true;
+  if (state.weaveType === 'weftFront') return false;
   return (col + row) % 2 === 0;
 }
 
@@ -1514,6 +1520,15 @@ function init() {
     pushHistory();
     renderWeave();
   });
+
+  // ── File menu toggle ──────────────────────────────────────────────────────
+  const fileMenu = document.getElementById('file-menu');
+  document.getElementById('btn-file-menu').addEventListener('click', e => {
+    e.stopPropagation();
+    fileMenu.classList.toggle('hidden');
+  });
+  document.addEventListener('click', () => fileMenu.classList.add('hidden'));
+  fileMenu.addEventListener('click', () => fileMenu.classList.add('hidden'));
 
   document.getElementById('btn-save').addEventListener('click', () => {
     const name = prompt('Save design as:', state.currentProjectName);
