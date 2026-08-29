@@ -1523,8 +1523,12 @@ function init() {
 
   // ── File menu toggle ──────────────────────────────────────────────────────
   const fileMenu = document.getElementById('file-menu');
-  document.getElementById('btn-file-menu').addEventListener('click', e => {
+  const fileMenuBtn = document.getElementById('btn-file-menu');
+  fileMenuBtn.addEventListener('click', e => {
     e.stopPropagation();
+    const rect = fileMenuBtn.getBoundingClientRect();
+    fileMenu.style.top  = (rect.bottom + 6) + 'px';
+    fileMenu.style.left = rect.left + 'px';
     fileMenu.classList.toggle('hidden');
   });
   document.addEventListener('click', () => fileMenu.classList.add('hidden'));

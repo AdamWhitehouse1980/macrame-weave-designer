@@ -105,9 +105,7 @@ body {
 /* ── File menu dropdown ── */
 .file-menu-wrap { position: relative; }
 .file-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
+  position: fixed;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
