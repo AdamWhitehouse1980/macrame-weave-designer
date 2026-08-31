@@ -570,9 +570,10 @@ function renderWeave() {
       ctx.stroke();
     }
     if (cs >= 16) {
+      const fp = state.framePad;
       ctx.font = `600 ${Math.max(7, Math.floor(cs * 0.36))}px sans-serif`;
       ctx.fillStyle = contrastColor(color);
-      ctx.fillText(String(c + 1), x + cs / 2, HEADER - 4);
+      if (c >= fp && c < cols - fp) ctx.fillText(String(c - fp + 1), x + cs / 2, HEADER - 4);
     }
   }
 
@@ -592,9 +593,10 @@ function renderWeave() {
       ctx.stroke();
     }
     if (cs >= 16) {
+      const fp = state.framePad;
       ctx.font = `600 ${Math.max(7, Math.floor(cs * 0.34))}px sans-serif`;
       ctx.fillStyle = contrastColor(color);
-      ctx.fillText(String(r + 1), HEADER / 2, y + cs / 2);
+      if (r >= fp && r < rows - fp) ctx.fillText(String(r - fp + 1), HEADER / 2, y + cs / 2);
     }
   }
 
@@ -611,9 +613,10 @@ function renderWeave() {
     ctx.fill();
     if (selected) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
     if (cs >= 16) {
+      const fp = state.framePad;
       ctx.font = `600 ${Math.max(7, Math.floor(cs * 0.36))}px sans-serif`;
       ctx.fillStyle = contrastColor(color);
-      ctx.fillText(String(c + 1), x + cs / 2, bottomY + 5);
+      if (c >= fp && c < cols - fp) ctx.fillText(String(c - fp + 1), x + cs / 2, bottomY + 5);
     }
   }
 
@@ -630,9 +633,10 @@ function renderWeave() {
     ctx.fill();
     if (selected) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
     if (cs >= 16) {
+      const fp = state.framePad;
       ctx.font = `600 ${Math.max(7, Math.floor(cs * 0.34))}px sans-serif`;
       ctx.fillStyle = contrastColor(color);
-      ctx.fillText(String(r + 1), rightX + HEADER / 2, y + cs / 2);
+      if (r >= fp && r < rows - fp) ctx.fillText(String(r - fp + 1), rightX + HEADER / 2, y + cs / 2);
     }
   }
 
@@ -1209,7 +1213,11 @@ function renderRopeSegmentEditor() {
   const { index } = sel[0];
   const segs = type === 'warp' ? state.warpColors[index] : state.weftColors[index];
   const maxEnd = type === 'warp' ? state.rows : state.cols;
-  title.textContent = type === 'warp' ? `Warp ${index + 1}` : `Weft ${index + 1}`;
+  const fp = state.framePad;
+  const innerIdx = index - fp;
+  const isFrame = index < fp || index >= (type === 'warp' ? state.cols : state.rows) - fp;
+  const label = isFrame ? 'Frame' : String(innerIdx + 1);
+  title.textContent = type === 'warp' ? `Warp ${label}` : `Weft ${label}`;
 
   segs.forEach((seg, si) => {
     const row = document.createElement('div');
@@ -1472,6 +1480,34 @@ function init() {
     scheduleRender();
     scheduleAutosave();
   });
+
+  function shiftPattern(dc, dr) {
+    const fp = state.framePad;
+    const cols = state.cols, rows = state.rows;
+    const innerCols = cols - 2 * fp;
+    const innerRows = rows - 2 * fp;
+    if (innerCols <= 0 || innerRows <= 0) return;
+    pushHistory();
+    const next = {};
+    for (const key of Object.keys(state.cellOverrides)) {
+      const [c, r] = key.split(',').map(Number);
+      if (c < fp || c >= cols - fp || r < fp || r >= rows - fp) {
+        next[key] = state.cellOverrides[key];
+      } else {
+        const nc = fp + ((c - fp + dc + innerCols) % innerCols);
+        const nr = fp + ((r - fp + dr + innerRows) % innerRows);
+        next[`${nc},${nr}`] = state.cellOverrides[key];
+      }
+    }
+    state.cellOverrides = next;
+    scheduleRender();
+    scheduleAutosave();
+  }
+
+  document.getElementById('btn-shift-left') .addEventListener('click', () => shiftPattern(-1,  0));
+  document.getElementById('btn-shift-right').addEventListener('click', () => shiftPattern( 1,  0));
+  document.getElementById('btn-shift-up')   .addEventListener('click', () => shiftPattern( 0, -1));
+  document.getElementById('btn-shift-down') .addEventListener('click', () => shiftPattern( 0,  1));
 
   document.getElementById('btn-undo').addEventListener('click', undo);
   document.getElementById('btn-redo').addEventListener('click', redo);

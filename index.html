@@ -35,6 +35,13 @@
         <button id="btn-mirror-h" title="Mirror H — paint strokes are mirrored left↔right">Mirror H</button>
         <button id="btn-mirror-v" title="Mirror V — paint strokes are mirrored top↔bottom">Mirror V</button>
         <button id="btn-symmetrize" title="Symmetrize — copy the top-left quadrant to all mirror quadrants, making the whole pattern perfectly symmetrical">Symmetrize</button>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-group" title="Shift pattern — wraps at edges">
+          <button id="btn-shift-left"  class="icon-btn" title="Shift pattern left">←</button>
+          <button id="btn-shift-up"    class="icon-btn" title="Shift pattern up">↑</button>
+          <button id="btn-shift-down"  class="icon-btn" title="Shift pattern down">↓</button>
+          <button id="btn-shift-right" class="icon-btn" title="Shift pattern right">→</button>
+        </div>
       </div>
       <div class="toolbar-right">
         <label>Columns
@@ -107,7 +114,7 @@
           <p class="hint" id="rope-hint">Click a header to select. ⌘/Ctrl+click to add to selection. Esc to deselect.</p>
           <div id="rope-segment-editor"></div>
         </section>
-        <div id="sidebar-version">v1.2</div>
+        <div id="sidebar-version">v1.3</div>
       </aside>
 
       <div id="canvas-container">
