@@ -1488,17 +1488,38 @@ function init() {
     const innerRows = rows - 2 * fp;
     if (innerCols <= 0 || innerRows <= 0) return;
     pushHistory();
+
+    // Snapshot actual visual state (warp-on-top boolean) for every inner cell.
+    // We must use visual state, not override flags, because the base parity
+    // changes at the destination position (e.g. plain weave checkerboard flips
+    // on every 1-cell shift), so a raw flag move would invert the design.
+    const visual = {};
+    for (let c = fp; c < cols - fp; c++) {
+      for (let r = fp; r < rows - fp; r++) {
+        visual[`${c},${r}`] = warpOnTop(c, r);
+      }
+    }
+
+    // Preserve frame overrides unchanged.
     const next = {};
     for (const key of Object.keys(state.cellOverrides)) {
       const [c, r] = key.split(',').map(Number);
       if (c < fp || c >= cols - fp || r < fp || r >= rows - fp) {
         next[key] = state.cellOverrides[key];
-      } else {
-        const nc = fp + ((c - fp + dc + innerCols) % innerCols);
-        const nr = fp + ((r - fp + dr + innerRows) % innerRows);
-        next[`${nc},${nr}`] = state.cellOverrides[key];
       }
     }
+
+    // For each inner destination cell, look up the visual from the shifted source
+    // and store an override only when it differs from the destination's base.
+    for (let nc = fp; nc < cols - fp; nc++) {
+      for (let nr = fp; nr < rows - fp; nr++) {
+        const sc = fp + ((nc - fp - dc + innerCols) % innerCols);
+        const sr = fp + ((nr - fp - dr + innerRows) % innerRows);
+        const desired = visual[`${sc},${sr}`];
+        if (desired !== baseWarpOnTop(nc, nr)) next[`${nc},${nr}`] = true;
+      }
+    }
+
     state.cellOverrides = next;
     scheduleRender();
     scheduleAutosave();
