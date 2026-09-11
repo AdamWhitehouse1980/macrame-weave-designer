@@ -25,8 +25,11 @@
             <button id="btn-load">Load</button>
             <div class="file-menu-divider"></div>
             <button id="btn-export">Export PNG</button>
+            <div class="file-menu-divider"></div>
+            <button id="btn-import-image">Import image as pattern…</button>
           </div>
         </div>
+        <input type="file" id="input-import-image" accept="image/*" style="display:none" />
         <div class="toolbar-group">
           <button id="btn-undo" title="Undo  ⌘Z" class="icon-btn">↩︎</button>
           <button id="btn-redo" title="Redo  ⌘⇧Z" class="icon-btn">↪︎</button>
@@ -45,10 +48,10 @@
       </div>
       <div class="toolbar-right">
         <label>Columns
-          <input type="number" id="input-cols" min="2" max="80" value="41" />
+          <input type="number" id="input-cols" min="2" max="80" value="45" />
         </label>
         <label>Rows
-          <input type="number" id="input-rows" min="2" max="80" value="41" />
+          <input type="number" id="input-rows" min="2" max="80" value="43" />
         </label>
         <label title="Cell size — how large each weave crossing appears on screen">Size
           <input type="range" id="input-cell-size" min="12" max="60" value="28" />
@@ -63,7 +66,7 @@
             <option value="twill31">Twill 3/1</option>
             <option value="basket">Basket 2×2</option>
             <option value="rib">Rib</option>
-            <option value="warpFront">Warp Front</option>
+            <option value="warpFront" selected>Warp Front</option>
             <option value="weftFront">Weft Front</option>
           </select>
         </label>
@@ -114,14 +117,38 @@
           <p class="hint" id="rope-hint">Click a header to select. ⌘/Ctrl+click to add to selection. Esc to deselect.</p>
           <div id="rope-segment-editor"></div>
         </section>
-        <div id="sidebar-version">v1.3</div>
+        <div id="sidebar-version">v1.4</div>
       </aside>
 
       <div id="canvas-container">
         <div id="canvas-scroll">
           <div id="canvas-inner">
             <canvas id="weave-canvas"></canvas>
+            <canvas id="import-preview-canvas" class="hidden"></canvas>
           </div>
+        </div>
+      </div>
+
+      <!-- Import image controls panel -->
+      <div id="import-controls" class="hidden">
+        <span class="import-label">Image import</span>
+        <label class="import-ctrl-row">
+          Scale
+          <input type="range" id="import-scale" min="4" max="200" value="40" />
+          <span id="import-scale-val">40</span>c
+        </label>
+        <label class="import-ctrl-row">
+          Threshold
+          <input type="range" id="import-threshold" min="0" max="255" value="128" />
+        </label>
+        <label class="import-ctrl-row import-invert-row">
+          <input type="checkbox" id="import-invert" />
+          Invert
+        </label>
+        <div class="import-hint">Drag image to position</div>
+        <div class="import-actions">
+          <button id="btn-import-apply" class="accent">Apply</button>
+          <button id="btn-import-cancel">Cancel</button>
         </div>
       </div>
     </div>

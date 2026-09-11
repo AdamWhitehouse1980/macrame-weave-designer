@@ -18,11 +18,11 @@ const DEFAULT_PALETTES = [
 ];
 
 let state = {
-  cols: 41,
-  rows: 41,
+  cols: 45,
+  rows: 43,
   cellSize: 22,
   framePad: 2,
-  weaveType: 'plain',
+  weaveType: 'warpFront',
   warpColors: [],
   weftColors: [],
   cellOverrides: {},
@@ -109,13 +109,11 @@ function deleteProject(id) {
 // ── Rope colour helpers ───────────────────────────────────────────────────────
 
 function initRopeColors() {
-  const palette = activePalette();
-  const c0 = palette.colors[0]?.hex ?? '#cccccc';
   state.warpColors = Array.from({ length: state.cols }, () => [
-    { colorHex: c0, end: state.rows },
+    { colorHex: '#1a1a1a', end: state.rows },
   ]);
   state.weftColors = Array.from({ length: state.rows }, () => [
-    { colorHex: c0, end: state.cols },
+    { colorHex: '#ffffff', end: state.cols },
   ]);
   state.cellOverrides = {};
 }
@@ -1604,8 +1602,8 @@ function init() {
 
   document.getElementById('btn-new').addEventListener('click', () => {
     if (_isDirty && !confirm('Start a new design? Unsaved changes will be lost.')) return;
-    state.cols = 41; state.rows = 41; state.framePad = 2;
-    state.cellSize = 22;
+    state.cols = 45; state.rows = 43; state.framePad = 2;
+    state.cellSize = 22; state.weaveType = 'warpFront';
     state.selectedRopes = [];
     state.currentProjectName = 'Untitled Design';
     initRopeColors();
@@ -1677,6 +1675,185 @@ function init() {
     editingPalette = null;
     renderPalette();
   });
+  // ── Image import ─────────────────────────────────────────────────────────
+  let _imp = null; // active import session
+
+  const importFileInput = document.getElementById('input-import-image');
+  const importPreviewCanvas = document.getElementById('import-preview-canvas');
+  const importControls = document.getElementById('import-controls');
+  const importScaleSlider = document.getElementById('import-scale');
+  const importScaleVal = document.getElementById('import-scale-val');
+  const importThresholdSlider = document.getElementById('import-threshold');
+  const importInvertChk = document.getElementById('import-invert');
+  const weaveCanvas = document.getElementById('weave-canvas');
+
+  document.getElementById('btn-import-image').addEventListener('click', () => {
+    importFileInput.click();
+  });
+
+  importFileInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    importFileInput.value = '';
+    const img = new Image();
+    img.onload = () => openImportMode(img);
+    img.src = URL.createObjectURL(file);
+  });
+
+  function openImportMode(img) {
+    const fp = state.framePad;
+    const innerCols = state.cols - 2 * fp;
+    const ar = img.naturalWidth / img.naturalHeight;
+    const initScale = Math.max(4, innerCols);
+
+    importScaleSlider.max = Math.max(innerCols * 2, 10);
+    importScaleSlider.value = initScale;
+    importScaleVal.textContent = initScale;
+    importThresholdSlider.value = 128;
+    importInvertChk.checked = false;
+
+    _imp = { img, ar, x: 0, y: 0, scale: initScale, threshold: 128, invert: false };
+
+    weaveCanvas.style.pointerEvents = 'none'; // disable painting while in import mode
+    importControls.classList.remove('hidden');
+    renderImportPreview();
+  }
+
+  function renderImportPreview() {
+    if (!_imp) return;
+    const cs = state.cellSize;
+    const fp = state.framePad;
+
+    const imgWidthPx  = _imp.scale * cs;
+    const imgHeightPx = (_imp.scale / _imp.ar) * cs;
+
+    // Position relative to canvas-inner, accounting for the canvas's own offset
+    // within that container (canvas-inner uses flexbox centering, so the canvas
+    // is not at 0,0 within it — offsetLeft/Top gives the actual gap).
+    const leftPx = weaveCanvas.offsetLeft + HEADER + fp * cs + _imp.x * cs;
+    const topPx  = weaveCanvas.offsetTop  + HEADER + fp * cs + _imp.y * cs;
+
+    importPreviewCanvas.style.left   = leftPx + 'px';
+    importPreviewCanvas.style.top    = topPx  + 'px';
+    importPreviewCanvas.style.width  = imgWidthPx + 'px';
+    importPreviewCanvas.style.height = imgHeightPx + 'px';
+    importPreviewCanvas.classList.remove('hidden');
+
+    // Draw thresholded preview at display resolution
+    const dpr = window.devicePixelRatio || 1;
+    const pw = Math.max(1, Math.round(imgWidthPx  * dpr));
+    const ph = Math.max(1, Math.round(imgHeightPx * dpr));
+    if (importPreviewCanvas.width !== pw || importPreviewCanvas.height !== ph) {
+      importPreviewCanvas.width  = pw;
+      importPreviewCanvas.height = ph;
+    }
+    const pctx = importPreviewCanvas.getContext('2d');
+    pctx.drawImage(_imp.img, 0, 0, pw, ph);
+    const id = pctx.getImageData(0, 0, pw, ph);
+    const d = id.data;
+    const t = _imp.threshold;
+    for (let i = 0; i < d.length; i += 4) {
+      const grey = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      const on = _imp.invert ? grey >= t : grey < t;
+      d[i] = d[i + 1] = d[i + 2] = on ? 0 : 255;
+      d[i + 3] = 210;
+    }
+    pctx.putImageData(id, 0, 0);
+  }
+
+  function applyImport() {
+    if (!_imp) return;
+    const fp = state.framePad;
+    const cols = state.cols, rows = state.rows;
+
+    // Sample image at native resolution
+    const off = document.createElement('canvas');
+    off.width  = _imp.img.naturalWidth;
+    off.height = _imp.img.naturalHeight;
+    const octx = off.getContext('2d');
+    octx.drawImage(_imp.img, 0, 0);
+    const id = octx.getImageData(0, 0, off.width, off.height);
+    const d = id.data;
+    const W = off.width, H = off.height;
+
+    function sampleGrey(u, v) {
+      if (u < 0 || u >= 1 || v < 0 || v >= 1) return null;
+      const px = Math.min(W - 1, Math.floor(u * W));
+      const py = Math.min(H - 1, Math.floor(v * H));
+      const i = (py * W + px) * 4;
+      return 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    }
+
+    pushHistory();
+    const t = _imp.threshold;
+    for (let c = fp; c < cols - fp; c++) {
+      for (let r = fp; r < rows - fp; r++) {
+        const ic = c - fp, ir = r - fp;
+        const u = (ic - _imp.x) / _imp.scale;
+        const v = (ir - _imp.y) / (_imp.scale / _imp.ar);
+        const grey = sampleGrey(u, v);
+        if (grey === null) continue;
+        const warpOnTop = _imp.invert ? grey >= t : grey < t;
+        setDepth(c, r, warpOnTop);
+      }
+    }
+
+    closeImportMode();
+    scheduleRender();
+    scheduleAutosave();
+  }
+
+  function closeImportMode() {
+    _imp = null;
+    importPreviewCanvas.classList.add('hidden');
+    importControls.classList.add('hidden');
+    weaveCanvas.style.pointerEvents = '';
+  }
+
+  // Controls
+  importScaleSlider.addEventListener('input', () => {
+    if (!_imp) return;
+    _imp.scale = Number(importScaleSlider.value);
+    importScaleVal.textContent = _imp.scale;
+    renderImportPreview();
+  });
+  importThresholdSlider.addEventListener('input', () => {
+    if (!_imp) return;
+    _imp.threshold = Number(importThresholdSlider.value);
+    renderImportPreview();
+  });
+  importInvertChk.addEventListener('change', () => {
+    if (!_imp) return;
+    _imp.invert = importInvertChk.checked;
+    renderImportPreview();
+  });
+  document.getElementById('btn-import-apply') .addEventListener('click', applyImport);
+  document.getElementById('btn-import-cancel').addEventListener('click', closeImportMode);
+
+  // Drag to reposition
+  importPreviewCanvas.addEventListener('pointerdown', e => {
+    if (!_imp) return;
+    e.preventDefault();
+    importPreviewCanvas.setPointerCapture(e.pointerId);
+    _imp._dragStartClientX = e.clientX;
+    _imp._dragStartClientY = e.clientY;
+    _imp._dragStartX = _imp.x;
+    _imp._dragStartY = _imp.y;
+  });
+  importPreviewCanvas.addEventListener('pointermove', e => {
+    if (!_imp || !importPreviewCanvas.hasPointerCapture(e.pointerId)) return;
+    const cs = state.cellSize;
+    // clientX is in viewport CSS pixels; divide by cs to get cell units.
+    // No DPR adjustment needed here — cs is already in CSS (logical) pixels.
+    _imp.x = _imp._dragStartX + (e.clientX - _imp._dragStartClientX) / cs;
+    _imp.y = _imp._dragStartY + (e.clientY - _imp._dragStartClientY) / cs;
+    renderImportPreview();
+  });
+  importPreviewCanvas.addEventListener('pointerup', e => {
+    if (importPreviewCanvas.hasPointerCapture(e.pointerId))
+      importPreviewCanvas.releasePointerCapture(e.pointerId);
+  });
+
   // ── Sidebar resize ────────────────────────────────────────────────────────
   const sidebar = document.getElementById('sidebar');
   const handle  = document.getElementById('sidebar-resize-handle');

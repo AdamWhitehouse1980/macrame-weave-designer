@@ -604,6 +604,7 @@ select:focus {
   align-items: center;
   justify-content: center;
   padding: 36px;
+  position: relative; /* needed so absolute-positioned import overlay is contained here */
 }
 
 #weave-canvas {
@@ -668,3 +669,43 @@ select:focus {
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
 .hidden { display: none !important; }
+
+/* ── Image import overlay ───────────────────────────────────────────────────── */
+#import-preview-canvas {
+  position: absolute;
+  cursor: move;
+  border: 2px dashed var(--accent);
+  box-sizing: border-box;
+  touch-action: none;
+  opacity: 0.85;
+}
+
+#import-controls {
+  position: fixed;
+  top: 60px;
+  right: 16px;
+  z-index: 300;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 220px;
+}
+.import-label { font-weight: 600; font-size: 13px; }
+.import-ctrl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.import-ctrl-row input[type=range] { flex: 1; }
+.import-invert-row { gap: 6px; }
+.import-hint { font-size: 11px; color: var(--text-faint); }
+.import-actions { display: flex; gap: 8px; }
+.import-actions button { flex: 1; }
+button.accent { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
