@@ -18,8 +18,8 @@ const DEFAULT_PALETTES = [
 ];
 
 let state = {
-  cols: 45,
-  rows: 43,
+  cols: 49,  // 45 inner + 2*framePad
+  rows: 47,  // 43 inner + 2*framePad
   cellSize: 22,
   framePad: 2,
   weaveType: 'warpFront',
@@ -1377,8 +1377,8 @@ function closeModal() {
 // ── Sync inputs ───────────────────────────────────────────────────────────────
 
 function syncInputsFromState() {
-  document.getElementById('input-cols').value = state.cols;
-  document.getElementById('input-rows').value = state.rows;
+  document.getElementById('input-cols').value = state.cols - 2 * state.framePad;
+  document.getElementById('input-rows').value = state.rows - 2 * state.framePad;
   document.getElementById('input-cell-size').value = state.cellSize;
   document.getElementById('input-frame-pad').value = state.framePad;
   document.getElementById('select-weave').value = state.weaveType;
@@ -1542,18 +1542,22 @@ function init() {
   document.getElementById('btn-select-all-weft').addEventListener('click', () => selectAllRopes('weft'));
 
   document.getElementById('input-cols').addEventListener('input', e => {
-    const v = Math.max(4, Math.min(80, +e.target.value));
-    if (!v || v === state.cols) return;
-    state.cols = v;
+    const inner = Math.max(2, Math.min(76, +e.target.value));
+    if (!inner) return;
+    const total = inner + 2 * state.framePad;
+    if (total === state.cols) return;
+    state.cols = total;
     ensureRopeLengths();
     state.selectedRopes = state.selectedRopes.filter(r => !(r.type === 'warp' && r.index >= state.cols));
     renderAll();
   });
 
   document.getElementById('input-rows').addEventListener('input', e => {
-    const v = Math.max(4, Math.min(80, +e.target.value));
-    if (!v || v === state.rows) return;
-    state.rows = v;
+    const inner = Math.max(2, Math.min(76, +e.target.value));
+    if (!inner) return;
+    const total = inner + 2 * state.framePad;
+    if (total === state.rows) return;
+    state.rows = total;
     ensureRopeLengths();
     state.selectedRopes = state.selectedRopes.filter(r => !(r.type === 'weft' && r.index >= state.rows));
     renderAll();
@@ -1565,7 +1569,16 @@ function init() {
   });
 
   document.getElementById('input-frame-pad').addEventListener('change', e => {
-    state.framePad = Math.max(0, Math.min(8, +e.target.value));
+    const oldFp = state.framePad;
+    const newFp = Math.max(0, Math.min(8, +e.target.value));
+    if (newFp === oldFp) return;
+    // Keep inner dimensions constant — adjust total cols/rows to compensate
+    const innerCols = state.cols - 2 * oldFp;
+    const innerRows = state.rows - 2 * oldFp;
+    state.framePad = newFp;
+    state.cols = innerCols + 2 * newFp;
+    state.rows = innerRows + 2 * newFp;
+    ensureRopeLengths();
     renderWeave();
   });
 
@@ -1602,7 +1615,7 @@ function init() {
 
   document.getElementById('btn-new').addEventListener('click', () => {
     if (_isDirty && !confirm('Start a new design? Unsaved changes will be lost.')) return;
-    state.cols = 45; state.rows = 43; state.framePad = 2;
+    state.framePad = 2; state.cols = 45 + 2 * 2; state.rows = 43 + 2 * 2;
     state.cellSize = 22; state.weaveType = 'warpFront';
     state.selectedRopes = [];
     state.currentProjectName = 'Untitled Design';
