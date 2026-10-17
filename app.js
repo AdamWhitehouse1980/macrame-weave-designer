@@ -55,74 +55,69 @@ let state = {
   mirrorV: false,
 };
 
-// ── Persistence ───────────────────────────────────────────────────────────────
+// ── Persistence — Supabase ────────────────────────────────────────────────────
 
-function saveProject(name) {
-  const projects = loadProjects();
-  const id = name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
-  const existing = Object.values(projects).find(p => p.name === name);
-  const key = existing ? existing.id : id;
-  const entry = {
-    id: key,
-    name,
-    savedAt: new Date().toISOString(),
-    data: {
-      cols: state.cols,
-      rows: state.rows,
-      cellSize: state.cellSize,
-      framePad: state.framePad,
-      weaveType: state.weaveType,
-      warpColors: state.warpColors,
-      weftColors: state.weftColors,
-      cellOverrides: state.cellOverrides,
-      palettes: state.palettes,
-      activePaletteId: state.activePaletteId,
-    },
-  };
-  localStorage.setItem('mwd-project-' + key, JSON.stringify(entry));
+const _SB_URL = 'https://ilcnsbzgniimfehkpdol.supabase.co/rest/v1/designs';
+const _SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlsY25zYnpnbmlpbWZlaGtwZG9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIyMTgyMjAsImV4cCI6MjEwNzc5NDIyMH0.7omobRuboAVw4uMVOqMiIO26Gg4JtaPP3bHEyFtq5Ls';
+const _SB_HDR = { 'apikey': _SB_KEY, 'Authorization': `Bearer ${_SB_KEY}`, 'Content-Type': 'application/json' };
+
+function getOwnerToken() {
+  let t = localStorage.getItem('mwd-owner-token');
+  if (!t) { t = crypto.randomUUID(); localStorage.setItem('mwd-owner-token', t); }
+  return t;
+}
+
+async function saveProject(name) {
+  const existing = Object.values(await loadProjects()).find(p => p.name === name);
+  const id = existing ? existing.id : name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
+  await fetch(_SB_URL, {
+    method: 'POST',
+    headers: { ..._SB_HDR, 'Prefer': 'resolution=merge-duplicates' },
+    body: JSON.stringify({
+      id,
+      owner_token: getOwnerToken(),
+      name,
+      saved_at: new Date().toISOString(),
+      data: {
+        cols: state.cols, rows: state.rows, cellSize: state.cellSize,
+        framePad: state.framePad, weaveType: state.weaveType,
+        warpColors: state.warpColors, weftColors: state.weftColors,
+        cellOverrides: state.cellOverrides,
+        palettes: state.palettes, activePaletteId: state.activePaletteId,
+      },
+    }),
+  });
   state.currentProjectName = name;
-  return key;
+  return id;
 }
 
-function loadProjects() {
-  const out = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith('mwd-project-')) {
-      try {
-        const p = JSON.parse(localStorage.getItem(k));
-        out[p.id] = p;
-      } catch {}
-    }
-  }
-  return out;
+async function loadProjects() {
+  try {
+    const r = await fetch(`${_SB_URL}?owner_token=eq.${getOwnerToken()}&order=saved_at.desc`, { headers: _SB_HDR });
+    const rows = await r.json();
+    const out = {};
+    for (const row of rows) out[row.id] = { id: row.id, name: row.name, savedAt: row.saved_at, data: row.data };
+    return out;
+  } catch { return {}; }
 }
 
-function loadProject(id) {
-  const raw = localStorage.getItem('mwd-project-' + id);
-  if (!raw) return;
-  const entry = JSON.parse(raw);
-  const d = entry.data;
-  state.cols = d.cols;
-  state.rows = d.rows;
+function applyProjectData(d, name) {
+  state.cols = d.cols; state.rows = d.rows;
   state.cellSize = d.cellSize ?? state.cellSize;
   state.framePad = d.framePad ?? 2;
   state.weaveType = d.weaveType ?? 'plain';
-  state.warpColors = d.warpColors;
-  state.weftColors = d.weftColors;
+  state.warpColors = d.warpColors; state.weftColors = d.weftColors;
   state.cellOverrides = d.cellOverrides ?? {};
   state.palettes = d.palettes ?? state.palettes;
   state.activePaletteId = d.activePaletteId ?? state.activePaletteId;
-  state.currentProjectName = entry.name;
+  state.currentProjectName = name;
   state.selectedRopes = [];
   _history = []; _histIdx = -1;
-  syncInputsFromState();
-  renderAll();
-  pushHistory();
+  syncInputsFromState(); renderAll(); pushHistory();
 }
 
-function deleteProject(id) {
-  localStorage.removeItem('mwd-project-' + id);
+async function deleteProject(id) {
+  await fetch(`${_SB_URL}?id=eq.${id}&owner_token=eq.${getOwnerToken()}`, { method: 'DELETE', headers: _SB_HDR });
 }
 
 // ── Rope colour helpers ───────────────────────────────────────────────────────
@@ -1344,16 +1339,20 @@ function renderColorEditorList() {
 
 // ── Load modal ────────────────────────────────────────────────────────────────
 
-function openLoadModal() {
-  const projects = loadProjects();
+async function openLoadModal() {
   const list = document.getElementById('project-list');
+  list.innerHTML = '<p style="color:var(--text-dim);font-size:12px">Loading…</p>';
+  document.getElementById('modal-overlay').classList.remove('hidden');
+
+  const projects = await loadProjects();
   list.innerHTML = '';
 
   if (Object.keys(projects).length === 0) {
     list.innerHTML = '<p style="color:var(--text-dim);font-size:12px">No saved designs yet.</p>';
+    return;
   }
 
-  Object.values(projects).sort((a, b) => b.savedAt.localeCompare(a.savedAt)).forEach(p => {
+  Object.values(projects).sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || '')).forEach(p => {
     const row = document.createElement('div');
     row.className = 'project-item';
     const info = document.createElement('div');
@@ -1363,18 +1362,18 @@ function openLoadModal() {
     const loadBtn = document.createElement('button');
     loadBtn.className = 'small';
     loadBtn.textContent = 'Load';
-    loadBtn.addEventListener('click', e => {
+    loadBtn.addEventListener('click', async e => {
       e.stopPropagation();
-      loadProject(p.id);
+      applyProjectData(p.data, p.name);
       closeModal();
     });
     const delBtn = document.createElement('button');
     delBtn.className = 'small danger';
     delBtn.textContent = '×';
-    delBtn.addEventListener('click', e => {
+    delBtn.addEventListener('click', async e => {
       e.stopPropagation();
       if (confirm(`Delete "${p.name}"?`)) {
-        deleteProject(p.id);
+        await deleteProject(p.id);
         openLoadModal();
       }
     });
@@ -1382,11 +1381,9 @@ function openLoadModal() {
     actions.appendChild(delBtn);
     row.appendChild(info);
     row.appendChild(actions);
-    row.addEventListener('click', () => { loadProject(p.id); closeModal(); });
+    row.addEventListener('click', () => { applyProjectData(p.data, p.name); closeModal(); });
     list.appendChild(row);
   });
-
-  document.getElementById('modal-overlay').classList.remove('hidden');
 }
 
 function closeModal() {
@@ -1621,10 +1618,10 @@ function init() {
   document.addEventListener('click', () => fileMenu.classList.add('hidden'));
   fileMenu.addEventListener('click', () => fileMenu.classList.add('hidden'));
 
-  document.getElementById('btn-save').addEventListener('click', () => {
+  document.getElementById('btn-save').addEventListener('click', async () => {
     const name = prompt('Save design as:', state.currentProjectName);
     if (name) {
-      saveProject(name);
+      await saveProject(name);
       document.getElementById('project-name-input').value = state.currentProjectName;
       flashSaved();
     }
@@ -1646,9 +1643,9 @@ function init() {
     markClean();
   });
 
-  document.getElementById('btn-duplicate').addEventListener('click', () => {
+  document.getElementById('btn-duplicate').addEventListener('click', async () => {
     const name = prompt('Duplicate design as:', state.currentProjectName + ' copy');
-    if (name) { saveProject(name); document.getElementById('project-name-input').value = state.currentProjectName; }
+    if (name) { await saveProject(name); document.getElementById('project-name-input').value = state.currentProjectName; }
   });
 
   document.getElementById('btn-modal-close').addEventListener('click', closeModal);
