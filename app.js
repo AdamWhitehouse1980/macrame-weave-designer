@@ -67,6 +67,19 @@ function getOwnerToken() {
   return t;
 }
 
+function captureThumbnail() {
+  try {
+    const src = document.getElementById('weave-canvas');
+    const thumb = document.createElement('canvas');
+    const maxW = 120, maxH = 80;
+    const ratio = Math.min(maxW / src.width, maxH / src.height);
+    thumb.width = Math.round(src.width * ratio);
+    thumb.height = Math.round(src.height * ratio);
+    thumb.getContext('2d').drawImage(src, 0, 0, thumb.width, thumb.height);
+    return thumb.toDataURL('image/jpeg', 0.7);
+  } catch { return null; }
+}
+
 async function saveProject(name) {
   const existing = Object.values(await loadProjects()).find(p => p.name === name);
   const id = existing ? existing.id : name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
@@ -84,6 +97,7 @@ async function saveProject(name) {
         warpColors: state.warpColors, weftColors: state.weftColors,
         cellOverrides: state.cellOverrides,
         palettes: state.palettes, activePaletteId: state.activePaletteId,
+        thumbnail: captureThumbnail(),
       },
     }),
   });
@@ -808,6 +822,10 @@ function selectRope(type, index, additive = false) {
   }
   renderWeave();
   renderRopeSegmentEditor();
+  // Scroll rope panel into view when a single rope is selected from the canvas header
+  if (state.selectedRopes.length === 1) {
+    document.getElementById('rope-segment-editor').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
 }
 
 function selectAllRopes(type) {
@@ -1367,7 +1385,17 @@ async function openLoadModal() {
     const row = document.createElement('div');
     row.className = 'project-item';
     const info = document.createElement('div');
-    info.innerHTML = `<div class="project-name">${p.name}</div><div class="project-meta">${new Date(p.savedAt).toLocaleString()}</div>`;
+    info.className = 'project-info';
+    if (p.data?.thumbnail) {
+      const img = document.createElement('img');
+      img.src = p.data.thumbnail;
+      img.className = 'project-thumb';
+      img.alt = '';
+      info.appendChild(img);
+    }
+    const text = document.createElement('div');
+    text.innerHTML = `<div class="project-name">${p.name}</div><div class="project-meta">${new Date(p.savedAt).toLocaleString()}</div>`;
+    info.appendChild(text);
     const actions = document.createElement('div');
     actions.className = 'project-actions';
     const loadBtn = document.createElement('button');
@@ -1592,6 +1620,17 @@ function init() {
 
   document.getElementById('input-cell-size').addEventListener('input', e => {
     state.cellSize = +e.target.value;
+    renderWeave();
+  });
+
+  document.getElementById('btn-zoom-fit').addEventListener('click', () => {
+    const scroll = document.getElementById('canvas-scroll');
+    const availW = scroll.clientWidth - 72; // subtract padding
+    const availH = scroll.clientHeight - 72;
+    const fitW = Math.floor(availW / state.cols);
+    const fitH = Math.floor(availH / state.rows);
+    state.cellSize = Math.max(12, Math.min(60, Math.min(fitW, fitH)));
+    document.getElementById('input-cell-size').value = state.cellSize;
     renderWeave();
   });
 

@@ -662,6 +662,8 @@ select:focus {
   background: var(--surface3);
   border-color: var(--border-mid);
 }
+.project-info { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.project-thumb { width: 56px; height: 38px; object-fit: cover; border-radius: 4px; flex-shrink: 0; border: 1px solid var(--border); }
 .project-item .project-name { font-weight: 500; font-size: 13px; }
 .project-item .project-meta { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
 .project-item .project-actions { display: flex; gap: 4px; flex-shrink: 0; }
