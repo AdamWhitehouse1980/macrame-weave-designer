@@ -108,7 +108,12 @@ function applyProjectData(d, name) {
   state.weaveType = d.weaveType ?? 'plain';
   state.warpColors = d.warpColors; state.weftColors = d.weftColors;
   state.cellOverrides = d.cellOverrides ?? {};
-  state.palettes = d.palettes ?? state.palettes;
+  if (d.palettes) {
+    const existingIds = new Set(d.palettes.map(p => p.id));
+    const merged = [...d.palettes];
+    for (const dp of DEFAULT_PALETTES) { if (!existingIds.has(dp.id)) merged.push(dp); }
+    state.palettes = merged;
+  }
   state.activePaletteId = d.activePaletteId ?? state.activePaletteId;
   state.currentProjectName = name;
   state.selectedRopes = [];
@@ -348,7 +353,13 @@ function tryRestoreAutosave() {
     state.warpColors      = d.warpColors      ?? state.warpColors;
     state.weftColors      = d.weftColors      ?? state.weftColors;
     state.cellOverrides   = d.cellOverrides   ?? {};
-    state.palettes        = d.palettes        ?? state.palettes;
+    if (d.palettes) {
+      // Merge: ensure all DEFAULT_PALETTES are present (handles new built-ins added after autosave was written)
+      const existingIds = new Set(d.palettes.map(p => p.id));
+      const merged = [...d.palettes];
+      for (const dp of DEFAULT_PALETTES) { if (!existingIds.has(dp.id)) merged.push(dp); }
+      state.palettes = merged;
+    }
     state.activePaletteId = d.activePaletteId ?? state.activePaletteId;
     state.currentProjectName = d.currentProjectName ?? state.currentProjectName;
     state.gridDivisions     = d.gridDivisions     ?? 0;
