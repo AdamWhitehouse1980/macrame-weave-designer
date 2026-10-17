@@ -2,6 +2,25 @@
 
 const DEFAULT_PALETTES = [
   {
+    id: 'umbala-v1',
+    name: 'Umbala V1',
+    colors: [
+      { hex: '#65CD2D', name: 'Lime' },
+      { hex: '#178A41', name: 'Forest' },
+      { hex: '#33432E', name: 'Dark Forest' },
+      { hex: '#191919', name: 'Black' },
+      { hex: '#CAB692', name: 'Sand' },
+      { hex: '#FF5D75', name: 'Coral' },
+      { hex: '#FFEA00', name: 'Yellow' },
+      { hex: '#EE770E', name: 'Orange' },
+      { hex: '#D20135', name: 'Red' },
+      { hex: '#058CAA', name: 'Teal' },
+      { hex: '#632989', name: 'Purple' },
+      { hex: '#B6B6B6', name: 'Silver' },
+      { hex: '#ECECEC', name: 'White' },
+    ],
+  },
+  {
     id: 'bold',
     name: 'Bold & Modern',
     colors: [
@@ -27,8 +46,8 @@ let state = {
   weftColors: [],
   cellOverrides: {},
   palettes: JSON.parse(JSON.stringify(DEFAULT_PALETTES)),
-  activePaletteId: 'natural',
-  selectedColorHex: DEFAULT_PALETTES[0].colors[0].hex,
+  activePaletteId: 'umbala-v1',
+  selectedColorHex: DEFAULT_PALETTES[0].colors[0].hex, // #65CD2D (Umbala V1 Lime)
   selectedRopes: [],
   currentProjectName: 'Untitled Design',
   gridDivisions: 0,
