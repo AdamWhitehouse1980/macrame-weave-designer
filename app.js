@@ -383,6 +383,48 @@ function tryRestoreAutosave() {
   } catch { return false; }
 }
 
+// ── JSON backup / restore ─────────────────────────────────────────────────────
+
+async function exportDesignsJSON() {
+  const projects = await loadProjects();
+  const entries = Object.values(projects);
+  if (!entries.length) { alert('No saved designs to export.'); return; }
+  const blob = new Blob([JSON.stringify({ version: 1, designs: entries }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'weave-designs-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+async function importDesignsJSON(file) {
+  try {
+    const text = await file.text();
+    const json = JSON.parse(text);
+    const designs = json.designs ?? (Array.isArray(json) ? json : null);
+    if (!designs?.length) { alert('No designs found in this file.'); return; }
+    let imported = 0;
+    for (const p of designs) {
+      if (!p.id || !p.name || !p.data) continue;
+      await fetch(_SB_URL, {
+        method: 'POST',
+        headers: { ..._SB_HDR, 'Prefer': 'resolution=merge-duplicates' },
+        body: JSON.stringify({
+          id: p.id,
+          owner_token: getOwnerToken(),
+          name: p.name,
+          saved_at: p.savedAt ?? new Date().toISOString(),
+          data: p.data,
+        }),
+      });
+      imported++;
+    }
+    alert(`Imported ${imported} design${imported !== 1 ? 's' : ''}.`);
+  } catch (err) {
+    alert('Import failed: ' + err.message);
+  }
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 function exportPNG() {
   const canvas = document.getElementById('weave-canvas');
@@ -1586,6 +1628,18 @@ function init() {
   document.getElementById('btn-undo').addEventListener('click', undo);
   document.getElementById('btn-redo').addEventListener('click', redo);
   document.getElementById('btn-export').addEventListener('click', exportPNG);
+
+  document.getElementById('btn-export-json').addEventListener('click', exportDesignsJSON);
+
+  document.getElementById('btn-import-json').addEventListener('click', () => {
+    document.getElementById('input-import-json').click();
+  });
+  document.getElementById('input-import-json').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    await importDesignsJSON(file);
+  });
 
   document.getElementById('project-name-input').addEventListener('change', e => {
     state.currentProjectName = e.target.value.trim() || 'Untitled Design';
